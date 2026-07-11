@@ -35,6 +35,7 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		5ABB86F61530CF350A9943EE /* ABSApiClient in Frameworks */ = {isa = PBXBuildFile; productRef = 50591D8B6EB610D406BBB081 /* ABSApiClient */; };
 		65643F4DAA661FB0B247247E /* Pods_Audiobookshelf.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */; };
 		6F2516272E68DA3000F40541 /* LogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F2516262E68DA3000F40541 /* LogEntry.swift */; };
 		E9D5504628AC1A3900C746DD /* LibraryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D5504528AC1A3900C746DD /* LibraryItem.swift */; };
@@ -156,6 +157,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				65643F4DAA661FB0B247247E /* Pods_Audiobookshelf.framework in Frameworks */,
+				5ABB86F61530CF350A9943EE /* ABSApiClient in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -396,6 +398,9 @@
 			dependencies = (
 			);
 			name = Audiobookshelf;
+			packageProductDependencies = (
+				50591D8B6EB610D406BBB081 /* ABSApiClient */,
+			);
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* Audiobookshelf.app */;
 			productType = "com.apple.product-type.application";
@@ -448,6 +453,9 @@
 				Base,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
+			packageReferences = (
+				70A512C4EE483B5C7A5948CA /* XCLocalSwiftPackageReference "ABSApiClient" */,
+			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -853,6 +861,21 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		70A512C4EE483B5C7A5948CA /* XCLocalSwiftPackageReference "ABSApiClient" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../ABSApiClient;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		50591D8B6EB610D406BBB081 /* ABSApiClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 70A512C4EE483B5C7A5948CA /* XCLocalSwiftPackageReference "ABSApiClient" */;
+			productName = ABSApiClient;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 504EC2FC1FED79650016851F /* Project object */;
 }
