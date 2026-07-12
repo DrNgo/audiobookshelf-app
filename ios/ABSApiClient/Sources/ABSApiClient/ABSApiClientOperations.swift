@@ -11,36 +11,41 @@
 import Foundation
 
 extension ABSApiClient {
-    /// Run one operation against a fresh refresh-aware client, mapping any thrown error to nil.
-    /// Every wrapper below is a one-liner over this helper.
+    /// Run one operation against a fresh refresh-aware client, mapping any thrown error to nil and
+    /// reporting it to `config.diagnostics`. Every wrapper below is a one-liner over this helper.
     private static func perform<T>(
         _ config: ABSClientConfig,
         _ call: @Sendable (Client) async throws -> T?
     ) async -> T? {
         do { return try await call(makeRefreshAwareClient(config: config)) }
-        catch { return nil }
+        catch {
+            config.diagnostics?(String(describing: error))
+            return nil
+        }
     }
 
     // MARK: - Reads
 
-    /// GET /api/me — the minimal user DTO, or nil on failure.
-    public static func fetchCurrentUser(config: ABSClientConfig) async -> Components.Schemas.userMinimal? {
+    /// GET /api/me — raw JSON body (freeform), for the app to decode with its own lenient `User`
+    /// model. Returns nil on failure.
+    public static func fetchCurrentUserData(config: ABSClientConfig) async -> Data? {
         await perform(config) { client in
             guard case let .ok(ok) = try await client.getCurrentUser() else { return nil }
-            return try ok.body.json
+            return try JSONEncoder().encode(ok.body.json)
         }
     }
 
-    /// GET /api/me/progress/{libraryItemId}[/{episodeId}] — the media progress DTO, or nil when
-    /// there is no progress (404) or on failure.
-    public static func fetchMediaProgress(config: ABSClientConfig, libraryItemId: String, episodeId: String?) async -> Components.Schemas.mediaProgress? {
+    /// GET /api/me/progress/{libraryItemId}[/{episodeId}] — raw JSON body (freeform), for the app to
+    /// decode with its own lenient `MediaProgress` model. Nil when there is no progress (404) or on
+    /// failure.
+    public static func fetchMediaProgressData(config: ABSClientConfig, libraryItemId: String, episodeId: String?) async -> Data? {
         await perform(config) { client in
             if let episodeId, !episodeId.isEmpty {
                 guard case let .ok(ok) = try await client.getPodcastEpisodeMediaProgress(.init(path: .init(libraryItemId: libraryItemId, episodeId: episodeId))) else { return nil }
-                return try ok.body.json
+                return try JSONEncoder().encode(ok.body.json)
             } else {
                 guard case let .ok(ok) = try await client.getMediaProgress(.init(path: .init(libraryItemId: libraryItemId))) else { return nil }
-                return try ok.body.json
+                return try JSONEncoder().encode(ok.body.json)
             }
         }
     }
