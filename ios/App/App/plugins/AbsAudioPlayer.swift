@@ -307,6 +307,16 @@ public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
         if let dict = try? session.asDictionary() {
             self.sendPlaybackSession(session: dict)
         }
+        // Seed the WebView's duration/time straight from the session. `sendMetadata()` reads
+        // `getMetdata()`, which returns nil until the player is initialized — on a cold-launch resume
+        // that hasn't happened yet, leaving the player at 0:00 / -0:00. The session already carries
+        // the real values, so send them directly (BUFFERING keeps the UI in its loading state until
+        // the real metadata updates arrive).
+        self.notifyListeners("onMetadata", data: [
+            "duration": session.duration,
+            "currentTime": session.currentTime,
+            "playerState": "BUFFERING"
+        ])
         self.sendMetadata()
     }
 
