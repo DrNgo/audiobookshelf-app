@@ -66,6 +66,24 @@ extension ABSApiClient {
         }
     }
 
+    /// GET /api/me/items-in-progress — raw JSON `{ libraryItems: [minified item] }` (freeform items),
+    /// for the app to decode into its own CarPlay/browse view models. Nil on failure.
+    public static func fetchItemsInProgressData(config: ABSClientConfig, limit: Int = 25) async -> Data? {
+        await perform(config) { client in
+            guard case let .ok(ok) = try await client.getItemsInProgress(.init(query: .init(limit: limit))) else { return nil }
+            return try JSONEncoder().encode(ok.body.json)
+        }
+    }
+
+    /// GET /api/libraries/{id}/personalized — raw JSON (array of shelves, freeform entities), for the
+    /// app to decode and pick the shelf it needs (e.g. recently-added). Nil on failure.
+    public static func fetchPersonalizedShelvesData(config: ABSClientConfig, libraryId: String, limit: Int = 10) async -> Data? {
+        await perform(config) { client in
+            guard case let .ok(ok) = try await client.getLibraryPersonalizedView(.init(path: .init(id: libraryId), query: .init(limit: limit))) else { return nil }
+            return try JSONEncoder().encode(ok.body.json)
+        }
+    }
+
     // MARK: - Writes
 
     /// PATCH /api/me/progress/{libraryItemId}[/{episodeId}] with a partial progress update.
