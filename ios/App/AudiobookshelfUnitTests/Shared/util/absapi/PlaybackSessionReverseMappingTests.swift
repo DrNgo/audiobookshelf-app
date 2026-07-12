@@ -17,13 +17,13 @@ final class PlaybackSessionReverseMappingTests: XCTestCase {
     func testChapterToDTO() {
         let ch = Chapter()
         ch.id = 3
-        ch.start = 12.9   // Double → DTO Int
+        ch.start = 12.9   // fractional seconds preserved (DTO start is now number/Double)
         ch.end = 600.5
         ch.title = "Ch"
 
         let dto = ch.toDTO()
         XCTAssertEqual(dto.id, 3)
-        XCTAssertEqual(dto.start, 12)   // truncated to Int
+        XCTAssertEqual(dto.start, 12.9)
         XCTAssertEqual(dto.end, 600.5)
         XCTAssertEqual(dto.title, "Ch")
     }

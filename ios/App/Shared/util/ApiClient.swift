@@ -374,15 +374,22 @@ class ApiClient {
     
     public static func startPlaybackSession(libraryItemId: String, episodeId: String?, forceTranscode:Bool, callback: @escaping (_ param: PlaybackSession) -> Void) {
         // Phase 4 migration: served solely by the generated ABSApiClient (no legacy fallback).
-        // The callback is delivered on the main queue to match the legacy Alamofire behavior the
-        // player relies on (AVPlayer setup happens on the callback thread).
+        // The DTO is fetched off-thread, but the Realm PlaybackSession is built AND consumed on the
+        // main actor: it is saved to Realm and used by the player on the main thread immediately
+        // after, and Realm object graphs must be constructed and used on the same thread. (The
+        // legacy Alamofire path decoded on the main queue, preserving this.)
         Task {
-            let session = await ABSApi.startPlaybackSession(libraryItemId: libraryItemId, episodeId: episodeId, forceTranscode: forceTranscode)
-            if session == nil {
-                AbsLogger.error(message: "startPlaybackSession: Failed to create playback session")
-            }
+            let dto = await ABSApi.startPlaybackSessionDTO(libraryItemId: libraryItemId, episodeId: episodeId, forceTranscode: forceTranscode)
             await MainActor.run {
-                callback(session ?? PlaybackSession()) // Empty session on failure, per the contract
+                guard let dto = dto else {
+                    AbsLogger.error(message: "startPlaybackSession: Failed to create playback session")
+                    callback(PlaybackSession()) // Empty session on failure, per the contract
+                    return
+                }
+                let session = PlaybackSession.from(dto: dto)
+                session.serverConnectionConfigId = Store.serverConfig?.id
+                session.serverAddress = Store.serverConfig?.address
+                callback(session)
             }
         }
     }
