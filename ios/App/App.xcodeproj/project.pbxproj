@@ -26,6 +26,7 @@
 		3AF1970E2806E3CA0096F747 /* AbsAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF1970D2806E3CA0096F747 /* AbsAudioPlayer.swift */; };
 		3AFCB5E827EA240D00ECCC05 /* NowPlayingInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AFCB5E727EA240D00ECCC05 /* NowPlayingInfo.swift */; };
 		3B5AA0F6C03FBAD4FDDA2507 /* CarPlayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9084D29DAAE715B5071C3123 /* CarPlayManager.swift */; };
+		46D07243DC7DB0F2FA862498 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 227FDEA5A7124D6264E47D88 /* Foundation.framework */; };
 		4D66B954282EE87C008272D4 /* AbsDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D66B953282EE87C008272D4 /* AbsDownloader.swift */; };
 		4D66B958282EEA14008272D4 /* AbsFileSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D66B957282EEA14008272D4 /* AbsFileSystem.swift */; };
 		4D91EEC62A40F28D004807ED /* EBookFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D91EEC52A40F28D004807ED /* EBookFile.swift */; };
@@ -40,6 +41,7 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		5A87A55D5BFAD8F99928B7A8 /* AudiobookshelfWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51EEA93F06CDF784E79CF126 /* AudiobookshelfWidget.swift */; };
 		5ABB86F61530CF350A9943EE /* ABSApiClient in Frameworks */ = {isa = PBXBuildFile; productRef = 50591D8B6EB610D406BBB081 /* ABSApiClient */; };
 		61EB7D1078451FD5FEE1A4A4 /* ABSTokenRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3C5821849C2AECE3143637 /* ABSTokenRefreshCoordinator.swift */; };
 		65643F4DAA661FB0B247247E /* Pods_Audiobookshelf.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */; };
@@ -51,6 +53,7 @@
 		9623BF74CEDA408A7218CE82 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD6D77497B12DCD4B351665D /* CarPlaySceneDelegate.swift */; };
 		BA103077CE702C50901E1A27 /* PlaybackSessionMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FD2A93810100A769592643B /* PlaybackSessionMapping.swift */; };
 		BADB0FFD20F18520F6C439DA /* Pods_AudiobookshelfUnitTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 233CB56FD326F369FEED5390 /* Pods_AudiobookshelfUnitTests.framework */; };
+		BEE1FED3CE20AB25AA044F50 /* AudiobookshelfWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 122A7EA32D78DA32E4674564 /* AudiobookshelfWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C8A3048BF9EE771AAF6FA9FF /* PlaybackSessionReverseMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46838E6A9700D4ABE7C272CC /* PlaybackSessionReverseMappingTests.swift */; };
 		D46E266A8E077117FF127045 /* BrowseItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05AEFF9DCAF4378C16B374CE /* BrowseItemTests.swift */; };
 		DDCD537396A5CF97F28D614E /* BrowseApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A08F62D29AC320069E3997C0 /* BrowseApi.swift */; };
@@ -89,6 +92,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		33CEDE0260D1C5405D2949D9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DF083636C4374BEAD2F6D71F;
+			remoteInfo = AudiobookshelfWidget;
+		};
 		E9E8813E28DA5DE500D750C1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
@@ -98,9 +108,26 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		9B0DB7E8A564DDAF8D1610EE /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				BEE1FED3CE20AB25AA044F50 /* AudiobookshelfWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		05AEFF9DCAF4378C16B374CE /* BrowseItemTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowseItemTests.swift; path = AudiobookshelfUnitTests/Shared/util/browse/BrowseItemTests.swift; sourceTree = "<group>"; };
 		0A83C012C3F0F103E00B8F19 /* ABSClientProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ABSClientProvider.swift; path = Shared/util/absapi/ABSClientProvider.swift; sourceTree = "<group>"; };
+		122A7EA32D78DA32E4674564 /* AudiobookshelfWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AudiobookshelfWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		218B0FB8E3CEA98342421D74 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		227FDEA5A7124D6264E47D88 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS14.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		233CB56FD326F369FEED5390 /* Pods_AudiobookshelfUnitTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_AudiobookshelfUnitTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		2948E135A93F21D1C991A7C1 /* SingleFlight.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SingleFlight.swift; path = Shared/util/absapi/SingleFlight.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
@@ -137,6 +164,7 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		51EEA93F06CDF784E79CF126 /* AudiobookshelfWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookshelfWidget.swift; sourceTree = "<group>"; };
 		6F2516262E68DA3000F40541 /* LogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntry.swift; sourceTree = "<group>"; };
 		89498D073F228221C043E0FB /* PlaybackSessionMappingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PlaybackSessionMappingTests.swift; path = AudiobookshelfUnitTests/Shared/util/absapi/PlaybackSessionMappingTests.swift; sourceTree = "<group>"; };
 		8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Audiobookshelf.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -196,6 +224,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6CF35B105A40739F5E033DC2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				46D07243DC7DB0F2FA862498 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E9E8813728DA5DE500D750C1 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -213,6 +249,7 @@
 			children = (
 				8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */,
 				233CB56FD326F369FEED5390 /* Pods_AudiobookshelfUnitTests.framework */,
+				A4C4D6640F8EA919042603D8 /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -299,6 +336,16 @@
 			path = util;
 			sourceTree = "<group>";
 		};
+		3CC7ACC5DE0A1BE002E4A2D9 /* AudiobookshelfWidget */ = {
+			isa = PBXGroup;
+			children = (
+				51EEA93F06CDF784E79CF126 /* AudiobookshelfWidget.swift */,
+				218B0FB8E3CEA98342421D74 /* Info.plist */,
+			);
+			name = AudiobookshelfWidget;
+			path = AudiobookshelfWidget;
+			sourceTree = "<group>";
+		};
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
@@ -323,6 +370,7 @@
 				BBE1050D9643F7625727F898 /* BrowsePlaybackStarter.swift */,
 				05AEFF9DCAF4378C16B374CE /* BrowseItemTests.swift */,
 				FCD782D68ADBCDC7149506F9 /* AudiobookIntents.swift */,
+				3CC7ACC5DE0A1BE002E4A2D9 /* AudiobookshelfWidget */,
 			);
 			sourceTree = "<group>";
 		};
@@ -331,6 +379,7 @@
 			children = (
 				504EC3041FED79650016851F /* Audiobookshelf.app */,
 				E9E8813A28DA5DE500D750C1 /* AudiobookshelfUnitTests.xctest */,
+				122A7EA32D78DA32E4674564 /* AudiobookshelfWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -351,6 +400,14 @@
 				4DFE2DA22D345C390000B204 /* MyViewController.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		A4C4D6640F8EA919042603D8 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				227FDEA5A7124D6264E47D88 /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 		E9D5506328AC1D3F00C746DD /* server */ = {
@@ -447,10 +504,12 @@
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
 				CEB30CA5B985BAFB7ABA9E2F /* [CP] Embed Pods Frameworks */,
+				9B0DB7E8A564DDAF8D1610EE /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F2917276B5BBFD805A1AEB52 /* PBXTargetDependency */,
 			);
 			name = Audiobookshelf;
 			packageProductDependencies = (
@@ -459,6 +518,23 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* Audiobookshelf.app */;
 			productType = "com.apple.product-type.application";
+		};
+		DF083636C4374BEAD2F6D71F /* AudiobookshelfWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 69F60B107B8329643DB1ABC3 /* Build configuration list for PBXNativeTarget "AudiobookshelfWidget" */;
+			buildPhases = (
+				165F202AE1BAFAD45D63BD12 /* Sources */,
+				6CF35B105A40739F5E033DC2 /* Frameworks */,
+				9084B32E6286107864FD7AED /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AudiobookshelfWidget;
+			productName = AudiobookshelfWidget;
+			productReference = 122A7EA32D78DA32E4674564 /* AudiobookshelfWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		E9E8813928DA5DE500D750C1 /* AudiobookshelfUnitTests */ = {
 			isa = PBXNativeTarget;
@@ -521,6 +597,7 @@
 			targets = (
 				504EC3031FED79650016851F /* Audiobookshelf */,
 				E9E8813928DA5DE500D750C1 /* AudiobookshelfUnitTests */,
+				DF083636C4374BEAD2F6D71F /* AudiobookshelfWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -536,6 +613,13 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9084B32E6286107864FD7AED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -611,6 +695,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		165F202AE1BAFAD45D63BD12 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A87A55D5BFAD8F99928B7A8 /* AudiobookshelfWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -701,6 +793,12 @@
 			isa = PBXTargetDependency;
 			target = 504EC3031FED79650016851F /* Audiobookshelf */;
 			targetProxy = E9E8813E28DA5DE500D750C1 /* PBXContainerItemProxy */;
+		};
+		F2917276B5BBFD805A1AEB52 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = AudiobookshelfWidget;
+			target = DF083636C4374BEAD2F6D71F /* AudiobookshelfWidget */;
+			targetProxy = 33CEDE0260D1C5405D2949D9 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -883,6 +981,51 @@
 			};
 			name = Release;
 		};
+		BB3A52CB06F30C090CE27C04 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 43;
+				DEVELOPMENT_TEAM = 7UFJ7D8V6A;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AudiobookshelfWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.audiobookshelf.app.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		E186BF678D77A0541A963A37 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 43;
+				DEVELOPMENT_TEAM = 7UFJ7D8V6A;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AudiobookshelfWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.audiobookshelf.app.dev.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		E9E8814028DA5DE500D750C1 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BCAF8EDB459AF9405F4FE9BA /* Pods-AudiobookshelfUnitTests.debug.xcconfig */;
@@ -945,6 +1088,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		69F60B107B8329643DB1ABC3 /* Build configuration list for PBXNativeTarget "AudiobookshelfWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB3A52CB06F30C090CE27C04 /* Release */,
+				E186BF678D77A0541A963A37 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
