@@ -9,8 +9,6 @@ import Foundation
 import Alamofire
 
 class ApiClient {
-    private static let secureStorage = SecureStorage()
-    
     public static func getData(from url: URL, completion: @escaping (UIImage?) -> Void) {
         URLSession.shared.dataTask(with: url, completionHandler: {(data, response, error) in
             if let data = data {
@@ -158,80 +156,17 @@ class ApiClient {
      * 5. If refresh fails, handle logout
      */
     private static func handleTokenRefresh<T: Decodable>(originalRequest: DataRequest, endpoint: String, method: HTTPMethod, parameters: Any?, decodable: T.Type, callback: ((_ param: T?) -> Void)?) {
-        guard let serverConfig = Store.serverConfig else {
-            AbsLogger.error(message: "handleTokenRefresh: No server config available")
-            callback?(nil)
-            return
-        }
-        
-        AbsLogger.info(message: "handleTokenRefresh: Attempting to refresh auth tokens for server \(serverConfig.name)")
-        
-        // Get refresh token from secure storage
-        guard let refreshToken = secureStorage.getRefreshToken(serverConnectionConfigId: serverConfig.id) else {
-            AbsLogger.error(message: "handleTokenRefresh: No refresh token available for server \(serverConfig.name)")
-            handleRefreshFailure()
-            callback?(nil)
-            return
-        }
-        
-        AbsLogger.info(message: "handleTokenRefresh: Retrieved refresh token, attempting to refresh access token")
-        
-        // Create refresh token request
-        let refreshHeaders: HTTPHeaders = [
-            "x-refresh-token": refreshToken,
-            "Content-Type": "application/json"
-        ]
-        
-        let refreshRequest = AF.request("\(serverConfig.address)/auth/refresh", method: .post, headers: refreshHeaders)
-        
-        refreshRequest.responseDecodable(of: RefreshResponse.self) { response in
-            switch response.result {
-            case .success(let refreshResponse):
-                guard let user = refreshResponse.user,
-                      !user.accessToken.isEmpty else {
-                    AbsLogger.error(message: "handleTokenRefresh: No access token in refresh response for server \(serverConfig.name)")
-                    handleRefreshFailure()
-                    callback?(nil)
-                    return
-                }
-                
-                AbsLogger.info(message: "handleTokenRefresh: Successfully obtained new access token")
-                
-                // Update tokens in secure storage and store
-                updateTokens(newAccessToken: user.accessToken, newRefreshToken: user.refreshToken ?? refreshToken, serverConnectionConfigId: serverConfig.id)
-                
-                // Retry the original request with the new access token
-                AbsLogger.info(message: "handleTokenRefresh: Retrying original request with new token")
-                retryOriginalRequest(endpoint: endpoint, method: method, parameters: parameters, decodable: decodable, newAccessToken: user.accessToken, callback: callback)
-                
-            case .failure(let error):
-                AbsLogger.error(message: "handleTokenRefresh: Refresh request failed for server \(serverConfig.name): \(error)")
-                handleRefreshFailure()
+        // Route through the shared coordinator so this legacy refresh is single-flighted together
+        // with the generated client's refreshes: a burst of concurrent 401s produces exactly one
+        // /auth/refresh round-trip (the coordinator persists the tokens + notifies the WebView).
+        Task {
+            guard let newAccessToken = await ABSTokenRefreshCoordinator.shared.refreshAccessToken() else {
+                AbsLogger.error(message: "handleTokenRefresh: Refresh failed")
                 callback?(nil)
+                return
             }
-        }
-    }
-    
-    /**
-     * Updates the stored tokens with new access and refresh tokens
-     */
-    private static func updateTokens(newAccessToken: String, newRefreshToken: String, serverConnectionConfigId: String) {
-        // Update the refresh token in secure storage if it's new
-        if newRefreshToken != secureStorage.getRefreshToken(serverConnectionConfigId: serverConnectionConfigId) {
-            let hasStored = secureStorage.storeRefreshToken(serverConnectionConfigId: serverConnectionConfigId, refreshToken: newRefreshToken)
-            AbsLogger.info(message: "updateTokens: Updated refresh token in secure storage. Stored=\(hasStored)")
-        }
-        
-        // Update access token on server connection config
-        Database.shared.updateServerConnectionConfigToken(newToken: newAccessToken)
-        AbsLogger.info(message: "updateTokens: Updated access token in server connection config")
-        
-        AbsLogger.info(message: "updateTokens: Successfully refreshed auth tokens for server \(Store.serverConfig?.name ?? "unknown")")
-        
-        // Notify webview frontend about token refresh
-        if let callback = AbsDatabase.tokenRefreshCallback {
-            let tokenData: [String: Any] = ["accessToken": newAccessToken]
-            callback("onTokenRefresh", tokenData)
+            AbsLogger.info(message: "handleTokenRefresh: Retrying original request with new token")
+            retryOriginalRequest(endpoint: endpoint, method: method, parameters: parameters, decodable: decodable, newAccessToken: newAccessToken, callback: callback)
         }
     }
     
@@ -303,27 +238,6 @@ class ApiClient {
                 AbsLogger.error(message: "retryOriginalRequest: Request failed with status \(response.response?.statusCode ?? 0)")
                 callback?(nil)
             }
-        }
-    }
-    
-    /**
-     * Handles the case when token refresh fails
-     * This will clear the current server connection and notify webview
-     */
-    private static func handleRefreshFailure() {
-        AbsLogger.info(message: "handleRefreshFailure: Token refresh failed, clearing session")
-        
-        // Clear the current server connection
-        Store.serverConfig = nil
-        
-        // Remove refresh token from secure storage
-        if let serverConfig = Store.serverConfig {
-            _ = secureStorage.removeRefreshToken(serverConnectionConfigId: serverConfig.id)
-        }
-        
-        // Notify webview frontend about token refresh failure
-        if let callback = AbsDatabase.tokenRefreshCallback {
-            callback("onTokenRefreshFailure", ["error": "Token refresh failed"])
         }
     }
     
@@ -666,15 +580,6 @@ struct Connectivity {
 }
 
 // MARK: - Response Models
-
-struct RefreshResponse: Decodable {
-    let user: RefreshUser?
-}
-
-struct RefreshUser: Decodable {
-    let accessToken: String
-    let refreshToken: String?
-}
 
 struct EmptyResponse: Decodable {}
 
