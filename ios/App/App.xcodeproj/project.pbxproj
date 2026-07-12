@@ -47,7 +47,6 @@
 		6C210EE47F6D2053C29A5E1B /* ABSApiClient in Frameworks */ = {isa = PBXBuildFile; productRef = 73AC33305BA94E0D33A0A657 /* ABSApiClient */; };
 		6EB8069070DA5AE6B91EAC5A /* UserMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D570B669FC72B9D32E85BBA /* UserMapping.swift */; };
 		6F2516272E68DA3000F40541 /* LogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F2516262E68DA3000F40541 /* LogEntry.swift */; };
-		738B4E5D248E874B6F77396E /* ABSTokenRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C165D52AD149B65893D2B82C /* ABSTokenRefresher.swift */; };
 		B6B56E9B5AF173C5E95A2930 /* UserMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FAE671E646122AF5A92AA1E /* UserMappingTests.swift */; };
 		BA103077CE702C50901E1A27 /* PlaybackSessionMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FD2A93810100A769592643B /* PlaybackSessionMapping.swift */; };
 		BADB0FFD20F18520F6C439DA /* Pods_AudiobookshelfUnitTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 233CB56FD326F369FEED5390 /* Pods_AudiobookshelfUnitTests.framework */; };
@@ -144,7 +143,6 @@
 		A28FBD4E130EF4A344B0ED0F /* SingleFlightTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SingleFlightTests.swift; path = AudiobookshelfUnitTests/Shared/util/absapi/SingleFlightTests.swift; sourceTree = "<group>"; };
 		BCAF8EDB459AF9405F4FE9BA /* Pods-AudiobookshelfUnitTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-AudiobookshelfUnitTests.debug.xcconfig"; path = "Target Support Files/Pods-AudiobookshelfUnitTests/Pods-AudiobookshelfUnitTests.debug.xcconfig"; sourceTree = "<group>"; };
 		BE96D57E131924D520D57057 /* Pods-Audiobookshelf.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.debug.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.debug.xcconfig"; sourceTree = "<group>"; };
-		C165D52AD149B65893D2B82C /* ABSTokenRefresher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ABSTokenRefresher.swift; path = Shared/util/absapi/ABSTokenRefresher.swift; sourceTree = "<group>"; };
 		D2F7F575384A63F1C47DE984 /* Pods-Audiobookshelf.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.release.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.release.xcconfig"; sourceTree = "<group>"; };
 		E9D5504528AC1A3900C746DD /* LibraryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryItem.swift; sourceTree = "<group>"; };
 		E9D5504728AC1A7A00C746DD /* MediaType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaType.swift; sourceTree = "<group>"; };
@@ -310,7 +308,6 @@
 				9FAE671E646122AF5A92AA1E /* UserMappingTests.swift */,
 				2FD2A93810100A769592643B /* PlaybackSessionMapping.swift */,
 				89498D073F228221C043E0FB /* PlaybackSessionMappingTests.swift */,
-				C165D52AD149B65893D2B82C /* ABSTokenRefresher.swift */,
 				0A83C012C3F0F103E00B8F19 /* ABSClientProvider.swift */,
 				FF2E2D6EFA283B23454B5312 /* ABSApi.swift */,
 				46838E6A9700D4ABE7C272CC /* PlaybackSessionReverseMappingTests.swift */,
@@ -665,7 +662,6 @@
 				4D199C47DB8485E2F769AD81 /* MediaProgressMapping.swift in Sources */,
 				6EB8069070DA5AE6B91EAC5A /* UserMapping.swift in Sources */,
 				BA103077CE702C50901E1A27 /* PlaybackSessionMapping.swift in Sources */,
-				738B4E5D248E874B6F77396E /* ABSTokenRefresher.swift in Sources */,
 				379C203A1F8B24B1753DCB21 /* ABSClientProvider.swift in Sources */,
 				3173814B20D1975CEDC72F97 /* ABSApi.swift in Sources */,
 				6A36BE672AD4CBF08720CB0C /* SingleFlight.swift in Sources */,

@@ -2,210 +2,114 @@
 //  ABSApiClientOperations.swift
 //  ABSApiClient
 //
-//  High-level, app-friendly wrappers around the generated operations. They build a
-//  refresh-aware client internally and return plain DTOs (Components.Schemas.*), so the app can
-//  call them without ever holding a `Client` or otherwise linking OpenAPIRuntime symbols into
-//  its own object files. The app maps the returned DTOs to its Realm models.
-//
-//  Each wrapper returns nil on any failure (network, non-2xx, or strict-decode) so the caller
-//  can fall back to the legacy ApiClient during the migration.
+//  High-level, app-friendly wrappers around the generated operations. They build a refresh-aware
+//  client internally and return plain DTOs (Components.Schemas.*) or Data, so the app can call them
+//  without ever holding a `Client` or otherwise linking OpenAPIRuntime symbols. Each wrapper returns
+//  nil / false on any failure (network, non-2xx, or strict-decode).
 //
 
 import Foundation
 
 extension ABSApiClient {
-    /// GET /api/me — returns the minimal user DTO, or nil on failure.
-    public static func fetchCurrentUser(
-        serverURL: URL,
-        accessToken: @escaping @Sendable () -> String?,
-        refresher: any ABSTokenRefreshing
-    ) async -> Components.Schemas.userMinimal? {
-        let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
-        do {
-            let output = try await client.getCurrentUser()
-            guard case let .ok(ok) = output else { return nil }
+    /// Run one operation against a fresh refresh-aware client, mapping any thrown error to nil.
+    /// Every wrapper below is a one-liner over this helper.
+    private static func perform<T>(
+        _ config: ABSClientConfig,
+        _ call: @Sendable (Client) async throws -> T?
+    ) async -> T? {
+        do { return try await call(makeRefreshAwareClient(config: config)) }
+        catch { return nil }
+    }
+
+    // MARK: - Reads
+
+    /// GET /api/me — the minimal user DTO, or nil on failure.
+    public static func fetchCurrentUser(config: ABSClientConfig) async -> Components.Schemas.userMinimal? {
+        await perform(config) { client in
+            guard case let .ok(ok) = try await client.getCurrentUser() else { return nil }
             return try ok.body.json
-        } catch {
-            return nil
         }
     }
 
-    /// GET /api/me/progress/{libraryItemId}[/{episodeId}] — returns the media progress DTO, or
-    /// nil when there is no progress (404) or on failure.
-    public static func fetchMediaProgress(
-        serverURL: URL,
-        accessToken: @escaping @Sendable () -> String?,
-        refresher: any ABSTokenRefreshing,
-        libraryItemId: String,
-        episodeId: String?
-    ) async -> Components.Schemas.mediaProgress? {
-        let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
-        do {
+    /// GET /api/me/progress/{libraryItemId}[/{episodeId}] — the media progress DTO, or nil when
+    /// there is no progress (404) or on failure.
+    public static func fetchMediaProgress(config: ABSClientConfig, libraryItemId: String, episodeId: String?) async -> Components.Schemas.mediaProgress? {
+        await perform(config) { client in
             if let episodeId, !episodeId.isEmpty {
-                let output = try await client.getPodcastEpisodeMediaProgress(
-                    .init(path: .init(libraryItemId: libraryItemId, episodeId: episodeId))
-                )
-                guard case let .ok(ok) = output else { return nil }
+                guard case let .ok(ok) = try await client.getPodcastEpisodeMediaProgress(.init(path: .init(libraryItemId: libraryItemId, episodeId: episodeId))) else { return nil }
                 return try ok.body.json
             } else {
-                let output = try await client.getMediaProgress(
-                    .init(path: .init(libraryItemId: libraryItemId))
-                )
-                guard case let .ok(ok) = output else { return nil }
+                guard case let .ok(ok) = try await client.getMediaProgress(.init(path: .init(libraryItemId: libraryItemId))) else { return nil }
                 return try ok.body.json
             }
-        } catch {
-            return nil
         }
     }
 
-    /// GET /api/items/{id}?expanded=1&include=progress[&episodeId=…] — returns the raw JSON body of
-    /// the (freeform) library item so the app can decode it with its own well-tested lenient model.
-    /// The expanded item is a large tree; modeling it as typed DTOs here would be brittle, so the op
-    /// exists only to provide the authenticated + refresh-aware request. Returns nil on failure.
-    public static func fetchLibraryItemData(
-        serverURL: URL,
-        accessToken: @escaping @Sendable () -> String?,
-        refresher: any ABSTokenRefreshing,
-        libraryItemId: String,
-        episodeId: String?
-    ) async -> Data? {
-        let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
-        do {
-            let output = try await client.getLibraryItem(
-                .init(
-                    path: .init(id: libraryItemId),
-                    query: .init(expanded: "1", include: "progress", episodeId: episodeId)
-                )
-            )
-            guard case let .ok(ok) = output else { return nil }
-            // Re-serialize the freeform object back to JSON for the app's decoder. This preserves
-            // the exact values (including numbers-as-strings the lenient model still tolerates).
+    /// GET /api/items/{id}?expanded=1&include=progress[&episodeId=…] — the raw JSON body of the
+    /// (freeform) library item, for the app to decode with its own lenient model. The expanded item
+    /// is a large tree; typing it here would be brittle, so this op only provides the authenticated,
+    /// refresh-aware request. Returns nil on failure.
+    public static func fetchLibraryItemData(config: ABSClientConfig, libraryItemId: String, episodeId: String?) async -> Data? {
+        await perform(config) { client in
+            guard case let .ok(ok) = try await client.getLibraryItem(.init(
+                path: .init(id: libraryItemId),
+                query: .init(expanded: "1", include: "progress", episodeId: episodeId)
+            )) else { return nil }
+            // Re-serialize the freeform object to JSON, preserving exact values (including
+            // numbers-as-strings the lenient model still tolerates).
             return try JSONEncoder().encode(ok.body.json)
-        } catch {
-            return nil
         }
     }
 
-    // MARK: - Writes (Phase 3)
+    // MARK: - Writes
 
     /// PATCH /api/me/progress/{libraryItemId}[/{episodeId}] with a partial progress update.
-    /// Returns true on a 2xx response.
-    public static func updateMediaProgress(
-        serverURL: URL,
-        accessToken: @escaping @Sendable () -> String?,
-        refresher: any ABSTokenRefreshing,
-        libraryItemId: String,
-        episodeId: String?,
-        update: Components.Schemas.mediaProgressUpdate
-    ) async -> Bool {
-        let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
-        do {
+    public static func updateMediaProgress(config: ABSClientConfig, libraryItemId: String, episodeId: String?, update: Components.Schemas.mediaProgressUpdate) async -> Bool {
+        await perform(config) { client in
             if let episodeId, !episodeId.isEmpty {
-                let output = try await client.updatePodcastEpisodeMediaProgress(
-                    .init(path: .init(libraryItemId: libraryItemId, episodeId: episodeId), body: .json(update))
-                )
-                if case .ok = output { return true }
+                if case .ok = try await client.updatePodcastEpisodeMediaProgress(.init(path: .init(libraryItemId: libraryItemId, episodeId: episodeId), body: .json(update))) { return true }
                 return false
             } else {
-                let output = try await client.updateMediaProgress(
-                    .init(path: .init(libraryItemId: libraryItemId), body: .json(update))
-                )
-                if case .ok = output { return true }
+                if case .ok = try await client.updateMediaProgress(.init(path: .init(libraryItemId: libraryItemId), body: .json(update))) { return true }
                 return false
             }
-        } catch {
-            return false
-        }
+        } ?? false
     }
 
     /// POST /api/session/{sessionId}/sync — heartbeat for an open server session.
-    public static func syncPlaybackSession(
-        serverURL: URL,
-        accessToken: @escaping @Sendable () -> String?,
-        refresher: any ABSTokenRefreshing,
-        sessionId: String,
-        report: Components.Schemas.playbackReport
-    ) async -> Bool {
-        let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
-        do {
-            let output = try await client.syncPlaybackSession(.init(path: .init(id: sessionId), body: .json(report)))
-            if case .ok = output { return true }
+    public static func syncPlaybackSession(config: ABSClientConfig, sessionId: String, report: Components.Schemas.playbackReport) async -> Bool {
+        await perform(config) { client in
+            if case .ok = try await client.syncPlaybackSession(.init(path: .init(id: sessionId), body: .json(report))) { return true }
             return false
-        } catch {
-            return false
-        }
+        } ?? false
     }
 
     /// POST /api/session/local — sync a single locally-recorded session.
-    public static func syncLocalPlaybackSession(
-        serverURL: URL,
-        accessToken: @escaping @Sendable () -> String?,
-        refresher: any ABSTokenRefreshing,
-        session: Components.Schemas.playbackSession
-    ) async -> Bool {
-        let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
-        do {
-            let output = try await client.syncLocalPlaybackSession(.init(body: .json(session)))
-            if case .ok = output { return true }
+    public static func syncLocalPlaybackSession(config: ABSClientConfig, session: Components.Schemas.playbackSession) async -> Bool {
+        await perform(config) { client in
+            if case .ok = try await client.syncLocalPlaybackSession(.init(body: .json(session))) { return true }
             return false
-        } catch {
-            return false
-        }
+        } ?? false
     }
 
     /// POST /api/session/local-all — bulk-sync offline sessions accumulated while disconnected.
-    public static func syncAllLocalPlaybackSessions(
-        serverURL: URL,
-        accessToken: @escaping @Sendable () -> String?,
-        refresher: any ABSTokenRefreshing,
-        body: Components.Schemas.localPlaybackSessionSyncAll
-    ) async -> Bool {
-        let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
-        do {
-            let output = try await client.syncAllLocalPlaybackSessions(.init(body: .json(body)))
-            if case .ok = output { return true }
+    public static func syncAllLocalPlaybackSessions(config: ABSClientConfig, body: Components.Schemas.localPlaybackSessionSyncAll) async -> Bool {
+        await perform(config) { client in
+            if case .ok = try await client.syncAllLocalPlaybackSessions(.init(body: .json(body))) { return true }
             return false
-        } catch {
-            return false
-        }
+        } ?? false
     }
 
     /// POST /api/items/{libraryItemId}/play[/{episodeId}] — start a server playback session.
-    /// Returns the session DTO, or nil on failure.
-    public static func startPlaybackSession(
-        serverURL: URL,
-        accessToken: @escaping @Sendable () -> String?,
-        refresher: any ABSTokenRefreshing,
-        libraryItemId: String,
-        episodeId: String?,
-        request: Components.Schemas.playbackSessionRequest,
-        diagnostics: (@Sendable (String) -> Void)? = nil
-    ) async -> Components.Schemas.playbackSession? {
-        let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
-        do {
+    public static func startPlaybackSession(config: ABSClientConfig, libraryItemId: String, episodeId: String?, request: Components.Schemas.playbackSessionRequest) async -> Components.Schemas.playbackSession? {
+        await perform(config) { client in
             if let episodeId, !episodeId.isEmpty {
-                let output = try await client.playPodcastEpisode(
-                    .init(path: .init(id: libraryItemId, episodeId: episodeId), body: .json(request))
-                )
-                guard case let .ok(ok) = output else {
-                    diagnostics?("playPodcastEpisode non-ok: \(String(describing: output))")
-                    return nil
-                }
+                guard case let .ok(ok) = try await client.playPodcastEpisode(.init(path: .init(id: libraryItemId, episodeId: episodeId), body: .json(request))) else { return nil }
                 return try ok.body.json
             } else {
-                let output = try await client.playLibraryItem(
-                    .init(path: .init(id: libraryItemId), body: .json(request))
-                )
-                guard case let .ok(ok) = output else {
-                    diagnostics?("playLibraryItem non-ok: \(String(describing: output))")
-                    return nil
-                }
+                guard case let .ok(ok) = try await client.playLibraryItem(.init(path: .init(id: libraryItemId), body: .json(request))) else { return nil }
                 return try ok.body.json
             }
-        } catch {
-            diagnostics?("startPlaybackSession error: \(String(describing: error))")
-            return nil
         }
     }
 }

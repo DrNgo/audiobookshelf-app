@@ -16,7 +16,7 @@
 import Foundation
 import ABSApiClient
 
-actor ABSTokenRefreshCoordinator {
+actor ABSTokenRefreshCoordinator: ABSTokenRefreshing {
     static let shared = ABSTokenRefreshCoordinator()
 
     private let singleFlight = SingleFlight<String?>()
