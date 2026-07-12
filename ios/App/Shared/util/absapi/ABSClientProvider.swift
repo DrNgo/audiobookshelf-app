@@ -2,31 +2,26 @@
 //  ABSClientProvider.swift
 //  Audiobookshelf
 //
-//  Single owner of ABSApiClient configuration. Builds a generated `Client` from the active
-//  server connection (base URL + access token) wired with refresh-aware authentication.
-//  As endpoints migrate off ApiClient (Phases 2–5), callers obtain their client here.
+//  Single owner of ABSApiClient configuration. The generated `Client` is constructed inside the
+//  ABSApiClient package (so the app never links OpenAPIRuntime symbols directly); this provider
+//  vends the inputs that construction needs — the server base URL, a lazy access-token reader,
+//  and the shared token refresher — sourced from the active server connection.
 //
 
 import Foundation
 import ABSApiClient
 
 enum ABSClientProvider {
-    // Stateless refresher; safe to share.
-    private static let refresher = ABSTokenRefresher()
+    /// Stateless refresher; safe to share.
+    static let refresher = ABSTokenRefresher()
 
-    /// A refresh-aware client for the currently-active server, or `nil` if no server is
-    /// configured. The access token is read lazily at request time so a token refreshed by
-    /// either client (generated or legacy ApiClient) is always picked up.
-    static func makeClient() -> Client? {
-        guard let serverConfig = Store.serverConfig,
-              let serverURL = URL(string: serverConfig.address) else {
-            AbsLogger.error(message: "ABSClientProvider: No server configured")
-            return nil
-        }
-        return ABSApiClient.makeRefreshAwareClient(
-            serverURL: serverURL,
-            accessToken: { Store.serverConfig?.token },
-            refresher: refresher
-        )
+    /// Reads the current access token at call time so a token refreshed by either client is
+    /// always picked up.
+    static let accessToken: @Sendable () -> String? = { Store.serverConfig?.token }
+
+    /// Base URL of the active server, or nil if none is configured / the address is invalid.
+    static var serverURL: URL? {
+        guard let address = Store.serverConfig?.address else { return nil }
+        return URL(string: address)
     }
 }

@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		06D1489326E2CDDD265A20C6 /* PlaybackSessionMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89498D073F228221C043E0FB /* PlaybackSessionMappingTests.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		3173814B20D1975CEDC72F97 /* ABSApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF2E2D6EFA283B23454B5312 /* ABSApi.swift */; };
 		379C203A1F8B24B1753DCB21 /* ABSClientProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A83C012C3F0F103E00B8F19 /* ABSClientProvider.swift */; };
 		3A200C1527D64D7E00CBF02E /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A200C1427D64D7E00CBF02E /* AudioPlayer.swift */; };
 		3A90295F280968E700E1D427 /* PlaybackReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A90295E280968E700E1D427 /* PlaybackReport.swift */; };
@@ -170,6 +171,7 @@
 		EACB38112BCCA1330060DA4A /* AudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioPlayerRateManager.swift; sourceTree = "<group>"; };
 		EACB38132BCCA1410060DA4A /* LegacyAudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LegacyAudioPlayerRateManager.swift; sourceTree = "<group>"; };
 		EACB38152BCCA1500060DA4A /* DefaultedAudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DefaultedAudioPlayerRateManager.swift; sourceTree = "<group>"; };
+		FF2E2D6EFA283B23454B5312 /* ABSApi.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ABSApi.swift; path = Shared/util/absapi/ABSApi.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -302,6 +304,7 @@
 				89498D073F228221C043E0FB /* PlaybackSessionMappingTests.swift */,
 				C165D52AD149B65893D2B82C /* ABSTokenRefresher.swift */,
 				0A83C012C3F0F103E00B8F19 /* ABSClientProvider.swift */,
+				FF2E2D6EFA283B23454B5312 /* ABSApi.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -652,6 +655,7 @@
 				BA103077CE702C50901E1A27 /* PlaybackSessionMapping.swift in Sources */,
 				738B4E5D248E874B6F77396E /* ABSTokenRefresher.swift in Sources */,
 				379C203A1F8B24B1753DCB21 /* ABSClientProvider.swift in Sources */,
+				3173814B20D1975CEDC72F97 /* ABSApi.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
