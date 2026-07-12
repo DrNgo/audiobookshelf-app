@@ -77,6 +77,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // Push current credentials to the App Group so the widget can fetch (no-op if not signed in).
         WidgetSync.sync()
+        // Listen for transport commands from the widget's control buttons.
+        WidgetCommandReceiver.shared.start()
 
         return true
     }
