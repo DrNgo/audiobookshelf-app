@@ -3,16 +3,17 @@
 <plist version="1.0">
 <dict>
 	<!--
-	  CarPlay audio-app entitlement. REQUIRES Apple approval (developer.apple.com CarPlay
-	  request form) and must be added to the provisioning profile before it can be used.
+	  App Group: shared container so the AudiobookshelfWidget extension (a separate process)
+	  can read the current server URL + access token the app writes here. Self-service —
+	  automatic signing provisions it, so device builds are unaffected.
 
-	  This file is intentionally NOT yet wired into the target: the CODE_SIGN_ENTITLEMENTS
-	  build setting is left unset so device builds keep signing normally. Once Apple grants
-	  the entitlement and it is added to the profile, set:
-	      CODE_SIGN_ENTITLEMENTS = App/App.entitlements
-	  on the Audiobookshelf target to activate the CarPlay scene.
+	  NOTE: the CarPlay-audio entitlement is intentionally NOT in this (now wired) file, because
+	  it needs Apple approval + a matching profile and would break device signing until granted.
+	  Add `com.apple.developer.carplay-audio = true` here once Apple grants it.
 	-->
-	<key>com.apple.developer.carplay-audio</key>
-	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.audiobookshelf.app</string>
+	</array>
 </dict>
 </plist>

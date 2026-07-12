@@ -75,6 +75,9 @@ actor ABSTokenRefreshCoordinator: ABSTokenRefreshing {
 
         Database.shared.updateServerConnectionConfigToken(newToken: newAccessToken)
 
+        // Keep the widget's shared token fresh after a refresh.
+        WidgetSync.sync()
+
         // Notify the WebView so the web layer stays authenticated — the critical parity detail.
         if let callback = AbsDatabase.tokenRefreshCallback {
             callback("onTokenRefresh", ["accessToken": newAccessToken])
