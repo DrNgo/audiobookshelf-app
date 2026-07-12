@@ -32,7 +32,7 @@
 
     <div class="cover-wrapper absolute z-30 pointer-events-auto" @click="clickContainer">
       <div class="w-full h-full flex justify-center">
-        <covers-book-cover v-if="libraryItem || localLibraryItemCoverSrc" ref="cover" :library-item="libraryItem" :download-cover="localLibraryItemCoverSrc" :width="bookCoverWidth" :book-cover-aspect-ratio="bookCoverAspectRatio" raw @imageLoaded="coverImageLoaded" />
+        <covers-book-cover v-if="coverUrl" ref="cover" :download-cover="coverUrl" :width="bookCoverWidth" :book-cover-aspect-ratio="bookCoverAspectRatio" raw @imageLoaded="coverImageLoaded" />
       </div>
 
       <div v-if="syncStatus === $constants.SyncStatus.FAILED" class="absolute top-0 left-0 w-full h-full flex items-center justify-center z-30" @click.stop="showSyncsFailedDialog">
@@ -301,6 +301,17 @@ export default {
     localLibraryItemCoverSrc() {
       var localItemCover = this.localLibraryItem?.coverContentUrl || null
       if (localItemCover) return Capacitor.convertFileSrc(localItemCover)
+      return null
+    },
+    coverUrl() {
+      // Downloaded media plays from a cover file on disk.
+      if (this.localLibraryItemCoverSrc) return this.localLibraryItemCoverSrc
+      // Streaming from the server: the playback session carries the libraryItemId and coverPath
+      // directly, so build the cover URL straight from the id — no embedded libraryItem needed.
+      // (Native sessions no longer include the full expanded libraryItem.)
+      if (this.playbackSession?.libraryItemId && this.playbackSession?.coverPath) {
+        return this.$store.getters['globals/getLibraryItemCoverSrcById'](this.playbackSession.libraryItemId)
+      }
       return null
     },
     playMethod() {
