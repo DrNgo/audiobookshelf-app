@@ -91,22 +91,28 @@ struct RefreshTokenHeaderMiddleware: ClientMiddleware {
     }
 }
 
+/// The inputs needed to build a refresh-aware client: the server base URL, a lazy reader for the
+/// current access token, and the token refresher. Holds no generated (`Client`/`Components`) types,
+/// so the app can construct and pass it without linking OpenAPIRuntime.
+public struct ABSClientConfig: Sendable {
+    public let serverURL: URL
+    public let accessToken: @Sendable () -> String?
+    public let refresher: any ABSTokenRefreshing
+
+    public init(serverURL: URL, accessToken: @escaping @Sendable () -> String?, refresher: any ABSTokenRefreshing) {
+        self.serverURL = serverURL
+        self.accessToken = accessToken
+        self.refresher = refresher
+    }
+}
+
 extension ABSApiClient {
     /// Build a client that transparently refreshes the access token on 401 and retries once.
-    ///
-    /// - Parameters:
-    ///   - serverURL: the Audiobookshelf server base URL.
-    ///   - accessToken: reads the current access token at request time.
-    ///   - refresher: performs the refresh + persistence + WebView notification (app-provided).
-    public static func makeRefreshAwareClient(
-        serverURL: URL,
-        accessToken: @escaping @Sendable () -> String?,
-        refresher: any ABSTokenRefreshing
-    ) -> Client {
+    public static func makeRefreshAwareClient(config: ABSClientConfig) -> Client {
         Client(
-            serverURL: serverURL,
+            serverURL: config.serverURL,
             transport: URLSessionTransport(),
-            middlewares: [RefreshAwareAuthMiddleware(accessTokenProvider: accessToken, refresher: refresher)]
+            middlewares: [RefreshAwareAuthMiddleware(accessTokenProvider: config.accessToken, refresher: config.refresher)]
         )
     }
 

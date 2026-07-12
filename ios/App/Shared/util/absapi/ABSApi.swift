@@ -2,20 +2,15 @@
 //  ABSApi.swift
 //  Audiobookshelf
 //
-//  Facade for endpoints served by the generated ABSApiClient (strangler-fig migration off
-//  ApiClient — see ios/ABSApiClient/MIGRATION.md). Each method fetches a DTO via the package's
-//  operation wrappers and maps it to the Realm model the rest of the app expects. The app never
-//  holds a generated `Client` (that would link OpenAPIRuntime into the app); all client
-//  interaction stays in the package, which hands back plain DTOs.
+//  Facade for endpoints served by the generated ABSApiClient. Each method resolves the active
+//  server config, calls a package operation wrapper, and maps the returned DTO/Data to the Realm
+//  model the app expects. The app never holds a generated `Client` (that would link OpenAPIRuntime);
+//  all client interaction stays in the package, which hands back plain DTOs.
 //
-//  Phase 2 (read-only): getCurrentUser, getMediaProgress. These are served ONLY by the generated
-//  client — there is no legacy fallback.
-//
-//  NOTE (strict decoding): the generated decoder is strict, whereas the legacy MediaProgress used
-//  `doubleOrStringDecoder` to tolerate numeric fields the server has historically returned as
-//  strings. With no fallback, a server returning such a field as a string makes the fetch return
-//  nil. Verify the target server returns real numbers for progress fields; if not, a tolerant
-//  coding strategy is required.
+//  NOTE (strict decoding): the generated decoder is strict, whereas the retired MediaProgress model
+//  used `doubleOrStringDecoder` to tolerate numeric fields the server has historically returned as
+//  strings. There is no legacy fallback, so a server returning such a field as a string makes the
+//  fetch return nil. Modern servers return real numbers; older ones may need a tolerant strategy.
 //
 
 import Foundation
@@ -25,15 +20,11 @@ import ABSApiClient
 enum ABSApi {
     /// GET /api/me → Realm `User`, or nil on failure.
     static func getCurrentUser() async -> User? {
-        guard let serverURL = ABSClientProvider.serverURL else {
+        guard let config = ABSClientProvider.config else {
             AbsLogger.error(message: "ABSApi.getCurrentUser: no server configured")
             return nil
         }
-        guard let dto = await ABSApiClient.fetchCurrentUser(
-            serverURL: serverURL,
-            accessToken: ABSClientProvider.accessToken,
-            refresher: ABSClientProvider.refresher
-        ) else {
+        guard let dto = await ABSApiClient.fetchCurrentUser(config: config) else {
             AbsLogger.error(message: "ABSApi.getCurrentUser: request failed")
             return nil
         }
@@ -43,120 +34,71 @@ enum ABSApi {
     /// GET /api/me/progress/{id}[/{episodeId}] → Realm `MediaProgress`, or nil when there is no
     /// progress (404) or on failure.
     static func getMediaProgress(libraryItemId: String, episodeId: String?) async -> MediaProgress? {
-        guard let serverURL = ABSClientProvider.serverURL else {
-            AbsLogger.error(message: "ABSApi.getMediaProgress: no server configured")
-            return nil
-        }
-        guard let dto = await ABSApiClient.fetchMediaProgress(
-            serverURL: serverURL,
-            accessToken: ABSClientProvider.accessToken,
-            refresher: ABSClientProvider.refresher,
-            libraryItemId: libraryItemId,
-            episodeId: episodeId
-        ) else {
+        guard let config = ABSClientProvider.config else { return nil }
+        guard let dto = await ABSApiClient.fetchMediaProgress(config: config, libraryItemId: libraryItemId, episodeId: episodeId) else {
             return nil
         }
         return MediaProgress.from(dto: dto)
     }
 
-    /// GET /api/items/{id}?expanded=1&include=progress — returns the raw JSON body, which the caller
-    /// decodes into a Realm `LibraryItem` on the main thread (Realm object) using the model's own
-    /// lenient decoder. Returns nil on failure.
+    /// GET /api/items/{id}?expanded=1&include=progress → raw JSON body, which the caller decodes into
+    /// a Realm `LibraryItem` on the main thread using the model's own lenient decoder. Nil on failure.
     static func getLibraryItemData(libraryItemId: String, episodeId: String?) async -> Data? {
-        guard let serverURL = ABSClientProvider.serverURL else {
-            AbsLogger.error(message: "ABSApi.getLibraryItem: no server configured")
-            return nil
-        }
-        return await ABSApiClient.fetchLibraryItemData(
-            serverURL: serverURL,
-            accessToken: ABSClientProvider.accessToken,
-            refresher: ABSClientProvider.refresher,
-            libraryItemId: libraryItemId,
-            episodeId: episodeId
-        )
+        guard let config = ABSClientProvider.config else { return nil }
+        return await ABSApiClient.fetchLibraryItemData(config: config, libraryItemId: libraryItemId, episodeId: episodeId)
     }
 
-    // MARK: - Writes (Phase 3)
+    // MARK: - Writes
 
     /// PATCH /api/me/progress/{id}[/{ep}]. The generic payload (e.g. ["isFinished": true]) is
     /// re-encoded into the typed mediaProgressUpdate DTO. Returns true on success.
     static func updateMediaProgress<T: Encodable>(libraryItemId: String, episodeId: String?, payload: T) async -> Bool {
-        guard let serverURL = ABSClientProvider.serverURL else { return false }
+        guard let config = ABSClientProvider.config else { return false }
         let update: Components.Schemas.mediaProgressUpdate
         do {
-            let data = try JSONEncoder().encode(payload)
-            update = try JSONDecoder().decode(Components.Schemas.mediaProgressUpdate.self, from: data)
+            update = try JSONDecoder().decode(Components.Schemas.mediaProgressUpdate.self, from: try JSONEncoder().encode(payload))
         } catch {
             AbsLogger.error(message: "ABSApi.updateMediaProgress: failed to build update DTO: \(error)")
             return false
         }
-        return await ABSApiClient.updateMediaProgress(
-            serverURL: serverURL,
-            accessToken: ABSClientProvider.accessToken,
-            refresher: ABSClientProvider.refresher,
-            libraryItemId: libraryItemId,
-            episodeId: episodeId,
-            update: update
-        )
+        return await ABSApiClient.updateMediaProgress(config: config, libraryItemId: libraryItemId, episodeId: episodeId, update: update)
     }
 
     /// POST /api/session/{sessionId}/sync — progress heartbeat for an open server session.
     static func reportPlaybackProgress(report: PlaybackReport, sessionId: String) async -> Bool {
-        guard let serverURL = ABSClientProvider.serverURL else { return false }
-        let dto = Components.Schemas.playbackReport(
-            currentTime: report.currentTime,
-            duration: report.duration,
-            timeListened: report.timeListened
-        )
-        return await ABSApiClient.syncPlaybackSession(
-            serverURL: serverURL,
-            accessToken: ABSClientProvider.accessToken,
-            refresher: ABSClientProvider.refresher,
-            sessionId: sessionId,
-            report: dto
-        )
+        guard let config = ABSClientProvider.config else { return false }
+        let dto = Components.Schemas.playbackReport(currentTime: report.currentTime, duration: report.duration, timeListened: report.timeListened)
+        return await ABSApiClient.syncPlaybackSession(config: config, sessionId: sessionId, report: dto)
     }
 
     /// POST /api/session/local — sync a single locally-recorded session. `session` must be frozen.
     static func reportLocalPlaybackProgress(_ session: PlaybackSession) async -> Bool {
-        guard let serverURL = ABSClientProvider.serverURL else { return false }
-        return await ABSApiClient.syncLocalPlaybackSession(
-            serverURL: serverURL,
-            accessToken: ABSClientProvider.accessToken,
-            refresher: ABSClientProvider.refresher,
-            session: session.toDTO()
-        )
+        guard let config = ABSClientProvider.config else { return false }
+        return await ABSApiClient.syncLocalPlaybackSession(config: config, session: session.toDTO())
     }
 
     /// POST /api/session/local-all — bulk-sync offline sessions. Sessions must be frozen.
     static func reportAllLocalPlaybackSessions(_ sessions: [PlaybackSession]) async -> Bool {
-        guard let serverURL = ABSClientProvider.serverURL else { return false }
+        guard let config = ABSClientProvider.config else { return false }
         let body = Components.Schemas.localPlaybackSessionSyncAll(
             sessions: sessions.map { $0.toDTO() },
             deviceInfo: PlaybackSession.deviceInfoDTO(from: sessions.first?.deviceInfo)
         )
-        return await ABSApiClient.syncAllLocalPlaybackSessions(
-            serverURL: serverURL,
-            accessToken: ABSClientProvider.accessToken,
-            refresher: ABSClientProvider.refresher,
-            body: body
-        )
+        return await ABSApiClient.syncAllLocalPlaybackSessions(config: config, body: body)
     }
 
     /// POST /api/items/{id}/play[/{episodeId}] → the raw playback session DTO, or nil on failure.
     ///
     /// Returns the DTO (not a Realm object) on purpose: the caller maps it to a Realm
     /// `PlaybackSession` on the MAIN thread, because that object is immediately saved to Realm and
-    /// consumed by the player on the main thread. Building the Realm object graph off-thread and
-    /// then persisting/using it on the main thread is unsafe. (The legacy ApiClient decoded on
-    /// Alamofire's main queue, preserving this invariant.)
+    /// consumed by the player there — Realm object graphs must be built and used on one thread.
     ///
     /// The generated play response models `libraryItem` as a freeform object (unused; mapped to
     /// nil). On servers ≥ 2.22.0 directplay uses `/public/session/{id}/track/{index}` and transcode
     /// uses the track `contentUrl`, both covered by the mapped audioTracks; the `libraryItem` `ino`
     /// (only needed for < 2.22.0 directplay + local fallback) is intentionally not carried.
     static func startPlaybackSessionDTO(libraryItemId: String, episodeId: String?, forceTranscode: Bool) async -> Components.Schemas.playbackSession? {
-        guard let serverURL = ABSClientProvider.serverURL else {
+        guard let config = ABSClientProvider.config else {
             AbsLogger.error(message: "ABSApi.startPlaybackSession: no server configured")
             return nil
         }
@@ -166,15 +108,7 @@ enum ABSApi {
             mediaPlayer: "AVPlayer",
             deviceInfo: Self.deviceInfoRequest()
         )
-        guard let dto = await ABSApiClient.startPlaybackSession(
-            serverURL: serverURL,
-            accessToken: ABSClientProvider.accessToken,
-            refresher: ABSClientProvider.refresher,
-            libraryItemId: libraryItemId,
-            episodeId: episodeId,
-            request: request,
-            diagnostics: { AbsLogger.error(message: "ABSApi.startPlaybackSession: \($0)") }
-        ) else {
+        guard let dto = await ABSApiClient.startPlaybackSession(config: config, libraryItemId: libraryItemId, episodeId: episodeId, request: request) else {
             AbsLogger.error(message: "ABSApi.startPlaybackSession: request failed")
             return nil
         }
@@ -182,7 +116,7 @@ enum ABSApi {
     }
 
     /// Build the deviceInfoRequest the client sends when starting a session (the server enriches
-    /// the rest). Mirrors the DeviceInfo the legacy ApiClient.startPlaybackSession sent.
+    /// the rest). Mirrors the device info the legacy ApiClient.startPlaybackSession sent.
     private static func deviceInfoRequest() -> Components.Schemas.deviceInfoRequest {
         var systemInfo = utsname()
         uname(&systemInfo)

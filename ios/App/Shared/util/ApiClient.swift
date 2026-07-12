@@ -38,8 +38,9 @@ class ApiClient {
                     return
                 }
                 let session = PlaybackSession.from(dto: dto)
-                session.serverConnectionConfigId = Store.serverConfig?.id
-                session.serverAddress = Store.serverConfig?.address
+                let serverConfig = Store.serverConfig
+                session.serverConnectionConfigId = serverConfig?.id
+                session.serverAddress = serverConfig?.address
                 callback(session)
             }
         }
@@ -59,9 +60,12 @@ class ApiClient {
 
     public static func syncLocalSessionsWithServer(isFirstSync: Bool) async {
         do {
+            // Read the active server id once — Store.serverConfig opens a Realm on each access.
+            let serverId = Store.serverConfig?.id
+
             // Sync server progress with local media progress
             let localMediaProgressList = Database.shared.getAllLocalMediaProgress().filter {
-                $0.serverConnectionConfigId == Store.serverConfig?.id
+                $0.serverConnectionConfigId == serverId
             }.map { $0.freeze() }
             AbsLogger.info(message: "syncLocalSessionsWithServer: Found \(localMediaProgressList.count) local media progress for server")
 
@@ -94,7 +98,7 @@ class ApiClient {
 
             // Send saved playback sessions to server and remove them from db
             let playbackSessions = Database.shared.getAllPlaybackSessions().filter {
-                $0.serverConnectionConfigId == Store.serverConfig?.id
+                $0.serverConnectionConfigId == serverId
             }.map { $0.freeze() }
             AbsLogger.info(message: "syncLocalSessionsWithServer: Found \(playbackSessions.count) playback sessions for server (first sync: \(isFirstSync))")
             if (!playbackSessions.isEmpty) {
