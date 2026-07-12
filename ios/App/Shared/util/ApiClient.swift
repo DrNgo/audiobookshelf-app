@@ -38,6 +38,13 @@ class ApiClient {
                     return
                 }
                 let session = PlaybackSession.from(dto: dto)
+                // Reject a decodable-but-degenerate session: an empty primary key or no audio tracks
+                // would produce a bad Realm save / an unplayable player. Treat as failure.
+                guard !session.id.isEmpty, session.libraryItemId?.isEmpty == false, !session.audioTracks.isEmpty else {
+                    AbsLogger.error(message: "startPlaybackSession: mapped session missing id/libraryItemId/audioTracks")
+                    callback(PlaybackSession())
+                    return
+                }
                 let serverConfig = Store.serverConfig
                 session.serverConnectionConfigId = serverConfig?.id
                 session.serverAddress = serverConfig?.address

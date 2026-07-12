@@ -62,14 +62,17 @@ paths:
       tags:
         - Me
       summary: Get your user
-      description: Get the authenticated user. The server returns a superset of the fields documented here.
+      description: >
+        Get the authenticated user. The response is documented as a freeform object because the
+        client decodes it with its own lenient model (which tolerates numeric fields the server has
+        historically returned as strings); see userMinimal for the fields most clients rely on.
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/userMinimal'
+                type: object
         '401':
           $ref: '#/components/responses/unauthorized401'
   /api/me/progress/{libraryItemId}:
@@ -91,8 +94,10 @@ paths:
           description: OK
           content:
             application/json:
+              # Freeform: the client decodes with its own lenient model (tolerates numeric fields
+              # the server has historically returned as strings). See the mediaProgress schema.
               schema:
-                $ref: '#/components/schemas/mediaProgress'
+                type: object
         '404':
           $ref: '#/components/responses/mediaProgress404'
     patch:
@@ -139,8 +144,10 @@ paths:
           description: OK
           content:
             application/json:
+              # Freeform: the client decodes with its own lenient model (tolerates numeric fields
+              # the server has historically returned as strings). See the mediaProgress schema.
               schema:
-                $ref: '#/components/schemas/mediaProgress'
+                type: object
         '404':
           $ref: '#/components/responses/mediaProgress404'
     patch:

@@ -98,11 +98,20 @@ public struct ABSClientConfig: Sendable {
     public let serverURL: URL
     public let accessToken: @Sendable () -> String?
     public let refresher: any ABSTokenRefreshing
+    /// Optional sink for failure detail (thrown decode/network errors). Since there is no legacy
+    /// fallback, this surfaces the error the operation wrappers otherwise swallow into nil/false.
+    public let diagnostics: (@Sendable (String) -> Void)?
 
-    public init(serverURL: URL, accessToken: @escaping @Sendable () -> String?, refresher: any ABSTokenRefreshing) {
+    public init(
+        serverURL: URL,
+        accessToken: @escaping @Sendable () -> String?,
+        refresher: any ABSTokenRefreshing,
+        diagnostics: (@Sendable (String) -> Void)? = nil
+    ) {
         self.serverURL = serverURL
         self.accessToken = accessToken
         self.refresher = refresher
+        self.diagnostics = diagnostics
     }
 }
 

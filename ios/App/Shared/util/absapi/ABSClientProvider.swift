@@ -22,7 +22,10 @@ enum ABSClientProvider {
         return ABSClientConfig(
             serverURL: serverURL,
             accessToken: { Store.serverConfig?.token },
-            refresher: ABSTokenRefreshCoordinator.shared
+            refresher: ABSTokenRefreshCoordinator.shared,
+            // Surface the thrown decode/network errors the operation wrappers otherwise swallow —
+            // important because there is no legacy fallback.
+            diagnostics: { AbsLogger.error(message: "ABSApiClient: \($0)") }
         )
     }
 }
