@@ -1,8 +1,15 @@
 # ABSApiClient
 
-A local Swift package that provides a **typed Audiobookshelf API client**, generated at
-build time from an OpenAPI document using Apple's
+A local Swift package that provides a **typed Audiobookshelf API client**, generated from an
+OpenAPI document with Apple's
 [swift-openapi-generator](https://github.com/apple/swift-openapi-generator).
+
+The generated sources are **pre-generated and committed** (`Sources/ABSApiClient/GeneratedSources/`).
+The generator is **not** run as a build-tool plugin. Running it at build time dragged the whole
+generator toolchain (swift-openapi-generator, Yams, OpenAPIKit, swift-argument-parser, …) into
+every app build — slowing builds and, because those packages are checked out into DerivedData,
+breaking `xcodebuild clean` in CI (`Could not delete .../checkouts/Yams/build …`). Shipping
+pre-generated code leaves only three lightweight runtime packages in the app's build graph.
 
 It lives inside this repo (not a separate repo) so it evolves with the app and needs no
 cross-repo coordination. If the client is ever useful to other apps or the community, this
@@ -12,13 +19,20 @@ directory can be lifted into its own repository unchanged.
 
 | File | Purpose |
 |------|---------|
-| `Package.swift` | Package manifest; wires in the generator plugin + runtime + URLSession transport. |
+| `Package.swift` | Package manifest; runtime + URLSession transport only (no generator plugin). |
 | `Sources/ABSApiClient/openapi.yaml` | The bundled OpenAPI spec the client is generated from. |
 | `Sources/ABSApiClient/openapi-generator-config.yaml` | Generator config (`types` + `client`, public access). |
+| `Sources/ABSApiClient/GeneratedSources/{Types,Client}.swift` | **Committed** generated models + client. Regenerate with `./regenerate.sh`. |
 | `Sources/ABSApiClient/ABSApiClient.swift` | Hand-written convenience layer: `makeClient(serverURL:accessToken:)` + a bearer-auth middleware. |
+| `regenerate.sh` | Regenerates `GeneratedSources/` from `openapi.yaml`, out-of-band (keeps the generator toolchain out of the app build graph). |
 
-`Client.swift` and `Types.swift` are **not** checked in — they are generated into the build
-directory on every build. Regenerate simply by building.
+`Client.swift` and `Types.swift` **are** checked in. After editing `openapi.yaml` (or the
+config), regenerate and commit the result:
+
+```bash
+cd ios/ABSApiClient
+./regenerate.sh
+```
 
 ## The OpenAPI spec
 
@@ -38,7 +52,8 @@ cd ios/ABSApiClient
 swift build
 ```
 
-This runs the generator plugin and compiles the generated client — no Xcode required.
+This compiles the committed generated client against the runtime packages — no Xcode, and no
+generator toolchain, required.
 
 ## Using it
 
@@ -80,23 +95,11 @@ The iOS app uses CocoaPods; SwiftPM and CocoaPods coexist fine in one Xcode proj
 2. **File ▸ Add Package Dependencies… ▸ Add Local…** and select `ios/ABSApiClient`.
 3. Add the `ABSApiClient` library product to the **Audiobookshelf** target
    (target ▸ General ▸ Frameworks, Libraries, and Embedded Content).
-4. First build: Xcode will ask to **trust & enable** the `OpenAPIGenerator` build-tool
-   plugin (plugin validation). Approve it — this is expected for build-tool plugins.
-5. `import ABSApiClient` where needed.
+4. `import ABSApiClient` where needed.
 
-### Command-line / CI builds
-
-Headless `xcodebuild` cannot show the trust prompt and will fail with
-`Validate plug-in "OpenAPIGenerator"`. Pass the skip flag so the build-tool plugin runs
-unattended (safe: the plugin is a pinned, first-party Apple package):
-
-```bash
-xcodebuild -workspace ios/App/App.xcworkspace -scheme App \
-  -destination 'generic/platform=iOS Simulator' \
-  -skipPackagePluginValidation build
-```
-
-Add `-skipPackagePluginValidation` to the TestFlight/CI build invocation as well.
+Because the client is pre-generated, there is **no** build-tool plugin and therefore no
+"trust & enable" plugin prompt — in Xcode or in CI. Headless `xcodebuild` builds it with no
+special flags.
 
 > Note: the package pulls its dependencies via SwiftPM (swift-openapi-runtime,
 > swift-openapi-urlsession, and their transitive deps). These are independent of the
