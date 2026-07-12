@@ -14,7 +14,10 @@ enum WidgetDeepLink {
     static func handleResume(_ url: URL) -> Bool {
         guard url.scheme == "audiobookshelf", url.host == "resume" else { return false }
         Task { @MainActor in
-            if let item = (await BrowseApi.continueListening()).first {
+            // If a book is already loaded (e.g. paused), just resume it in place — don't restart it.
+            if PlayerHandler.getPlaybackSession() != nil {
+                PlayerHandler.paused = false
+            } else if let item = (await BrowseApi.continueListening()).first {
                 BrowsePlaybackStarter.play(item) {}
             }
         }
