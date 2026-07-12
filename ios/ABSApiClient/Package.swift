@@ -19,14 +19,21 @@ let package = Package(
   dependencies: [
     .package(url: "https://github.com/apple/swift-openapi-generator", from: "1.13.0"),
     .package(url: "https://github.com/apple/swift-openapi-runtime", from: "1.12.0"),
-    .package(url: "https://github.com/apple/swift-openapi-urlsession", from: "1.3.0")
+    .package(url: "https://github.com/apple/swift-openapi-urlsession", from: "1.3.0"),
+    // HTTPTypes is imported directly by ABSApiClient.swift (BearerAuthMiddleware). It also
+    // arrives transitively via the OpenAPI packages, but declaring it explicitly is correct
+    // hygiene AND makes it a first-level product in the link closure — required so an
+    // app-hosted XCTest target that links ABSApiClient can resolve HTTPTypes symbols
+    // (Xcode's implicit link for such targets does not pull second-level transitive products).
+    .package(url: "https://github.com/apple/swift-http-types", from: "1.0.0")
   ],
   targets: [
     .target(
       name: "ABSApiClient",
       dependencies: [
         .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
-        .product(name: "OpenAPIURLSession", package: "swift-openapi-urlsession")
+        .product(name: "OpenAPIURLSession", package: "swift-openapi-urlsession"),
+        .product(name: "HTTPTypes", package: "swift-http-types")
       ],
       plugins: [
         .plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")
