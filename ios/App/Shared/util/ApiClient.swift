@@ -373,45 +373,17 @@ class ApiClient {
     // MARK: - API Functions
     
     public static func startPlaybackSession(libraryItemId: String, episodeId: String?, forceTranscode:Bool, callback: @escaping (_ param: PlaybackSession) -> Void) {
-        var endpoint = "api/items/\(libraryItemId)/play"
-        if episodeId != nil {
-            endpoint += "/\(episodeId!)"
-        }
-        
-        var systemInfo = utsname()
-        uname(&systemInfo)
-        let modelCode = withUnsafePointer(to: &systemInfo.machine) {
-            $0.withMemoryRebound(to: CChar.self, capacity: 1) {
-                ptr in String.init(validatingUTF8: ptr)
-            }
-        }
-        
-        // Create an Encodable struct for the parameters
-        let parameters = PlaybackSessionRequest(
-            forceDirectPlay: !forceTranscode ? "1" : "",
-            forceTranscode: forceTranscode ? "1" : "",
-            mediaPlayer: "AVPlayer",
-            deviceInfo: DeviceInfo(
-                deviceId: UIDevice.current.identifierForVendor?.uuidString,
-                manufacturer: "Apple",
-                model: modelCode,
-                clientVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
-            )
-        )
-        
-        // Use the new token refresh-enabled method
-        postResourceWithTokenRefresh(endpoint: endpoint, parameters: parameters, decodable: PlaybackSession.self) { session in
-            guard let session = session else {
+        // Phase 4 migration: served solely by the generated ABSApiClient (no legacy fallback).
+        // The callback is delivered on the main queue to match the legacy Alamofire behavior the
+        // player relies on (AVPlayer setup happens on the callback thread).
+        Task {
+            let session = await ABSApi.startPlaybackSession(libraryItemId: libraryItemId, episodeId: episodeId, forceTranscode: forceTranscode)
+            if session == nil {
                 AbsLogger.error(message: "startPlaybackSession: Failed to create playback session")
-                callback(PlaybackSession()) // Return empty session on failure
-                return
             }
-            
-            // Set server connection info on the session
-            session.serverConnectionConfigId = Store.serverConfig!.id
-            session.serverAddress = Store.serverConfig!.address
-            
-            callback(session)
+            await MainActor.run {
+                callback(session ?? PlaybackSession()) // Empty session on failure, per the contract
+            }
         }
     }
     

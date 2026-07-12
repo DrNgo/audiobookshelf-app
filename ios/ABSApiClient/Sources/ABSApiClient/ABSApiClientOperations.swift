@@ -142,4 +142,34 @@ extension ABSApiClient {
             return false
         }
     }
+
+    /// POST /api/items/{libraryItemId}/play[/{episodeId}] — start a server playback session.
+    /// Returns the session DTO, or nil on failure.
+    public static func startPlaybackSession(
+        serverURL: URL,
+        accessToken: @escaping @Sendable () -> String?,
+        refresher: any ABSTokenRefreshing,
+        libraryItemId: String,
+        episodeId: String?,
+        request: Components.Schemas.playbackSessionRequest
+    ) async -> Components.Schemas.playbackSession? {
+        let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
+        do {
+            if let episodeId, !episodeId.isEmpty {
+                let output = try await client.playPodcastEpisode(
+                    .init(path: .init(id: libraryItemId, episodeId: episodeId), body: .json(request))
+                )
+                guard case let .ok(ok) = output else { return nil }
+                return try ok.body.json
+            } else {
+                let output = try await client.playLibraryItem(
+                    .init(path: .init(id: libraryItemId), body: .json(request))
+                )
+                guard case let .ok(ok) = output else { return nil }
+                return try ok.body.json
+            }
+        } catch {
+            return nil
+        }
+    }
 }
