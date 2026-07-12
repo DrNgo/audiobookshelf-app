@@ -23,15 +23,18 @@ enum WidgetDeepLink {
     }
 
     /// Run a pending resume, if any. Call once the app is active (Realm/Store/player are ready).
+    ///
+    /// Only resumes a session that is ALREADY loaded (e.g. app was alive/paused) — it just unpauses
+    /// in place. On a cold launch there is no session, and starting one natively here fought the
+    /// app's init + the WebView's own state restoration (degenerate 0/0 session, playback errors), so
+    /// we deliberately do NOT native-start on cold launch: the app is already opening, and the user
+    /// resumes through the mature in-app flow (or we hand the resume to the web layer — see handoff).
     static func performPendingResume() {
         guard resumePending else { return }
         resumePending = false
         Task { @MainActor in
-            // Already loaded (e.g. suspended-with-session): just resume in place, don't restart.
             if PlayerHandler.getPlaybackSession() != nil {
                 PlayerHandler.paused = false
-            } else if let item = (await BrowseApi.continueListening()).first {
-                BrowsePlaybackStarter.play(item) {}
             }
         }
     }
