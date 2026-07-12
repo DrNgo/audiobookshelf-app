@@ -1,5 +1,5 @@
 //
-//  CarPlayListItem.swift
+//  BrowseItem.swift
 //  App
 //
 //  A minimal, framework-agnostic view model for one browsable audiobook row in CarPlay.
@@ -9,7 +9,7 @@
 
 import Foundation
 
-struct CarPlayListItem: Equatable {
+struct BrowseItem: Equatable {
     /// The server library item id, or — when `isLocal` — the local library item id. The playback
     /// starter branches on `isLocal` to decide how to begin a session.
     let id: String
@@ -19,7 +19,7 @@ struct CarPlayListItem: Equatable {
     let coverURL: URL?
 }
 
-extension CarPlayListItem {
+extension BrowseItem {
     // MARK: - Server browse decode
     //
     // Lenient decoders over the minified library item shape. Every field is optional; a row with
@@ -48,23 +48,23 @@ extension CarPlayListItem {
     }
 
     /// Map `GET /api/me/items-in-progress` (`{ libraryItems: [...] }`) into rows. [] on decode failure.
-    static func fromItemsInProgress(data: Data, serverAddress: String?) -> [CarPlayListItem] {
+    static func fromItemsInProgress(data: Data, serverAddress: String?) -> [BrowseItem] {
         guard let resp = try? JSONDecoder().decode(ItemsInProgressResponse.self, from: data) else { return [] }
         return (resp.libraryItems ?? []).compactMap { serverRow($0, serverAddress: serverAddress) }
     }
 
     /// Map `GET /api/libraries/{id}/personalized` (an array of shelves) into the "recently-added"
     /// shelf's rows. [] on decode failure or if the shelf is absent.
-    static func fromPersonalizedRecentlyAdded(data: Data, serverAddress: String?) -> [CarPlayListItem] {
+    static func fromPersonalizedRecentlyAdded(data: Data, serverAddress: String?) -> [BrowseItem] {
         guard let shelves = try? JSONDecoder().decode([Shelf].self, from: data) else { return [] }
         guard let shelf = shelves.first(where: { $0.id == "recently-added" }) else { return [] }
         return (shelf.entities ?? []).compactMap { serverRow($0, serverAddress: serverAddress) }
     }
 
-    private static func serverRow(_ item: MinifiedItem, serverAddress: String?) -> CarPlayListItem? {
+    private static func serverRow(_ item: MinifiedItem, serverAddress: String?) -> BrowseItem? {
         guard let id = item.id, !id.isEmpty else { return nil }
         let hasCover = item.media?.coverPath?.isEmpty == false
-        return CarPlayListItem(
+        return BrowseItem(
             id: id,
             title: item.media?.metadata?.title ?? "Unknown Title",
             author: item.media?.metadata?.authorName,
@@ -83,8 +83,8 @@ extension CarPlayListItem {
     // MARK: - Local (downloaded) item
 
     /// Map a downloaded item. Reads the on-disk cover; always `isLocal`.
-    static func from(local item: LocalLibraryItem) -> CarPlayListItem {
-        CarPlayListItem(
+    static func from(local item: LocalLibraryItem) -> BrowseItem {
+        BrowseItem(
             id: item.id,
             title: item.media?.metadata?.title ?? "Unknown Title",
             author: item.media?.metadata?.authorName,

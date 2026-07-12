@@ -1,5 +1,5 @@
 //
-//  CarPlayPlaybackStarter.swift
+//  BrowsePlaybackStarter.swift
 //  App
 //
 //  Starts native playback for a CarPlay row, reusing the exact paths the phone player uses
@@ -10,12 +10,12 @@
 
 import Foundation
 
-enum CarPlayPlaybackStarter {
+enum BrowsePlaybackStarter {
     /// Begin playback for the selected row. `onStarted` runs on the main thread once the session
     /// is playing (the caller uses it to present the Now Playing template); it is not called on
     /// failure. Must be invoked on the main thread — CarPlay row handlers already are.
     @MainActor
-    static func play(_ item: CarPlayListItem, onStarted: @escaping () -> Void) {
+    static func play(_ item: BrowseItem, onStarted: @escaping () -> Void) {
         PlayerHandler.stopPlayback()
         let rate = PlayerSettings.main().playbackRate
 

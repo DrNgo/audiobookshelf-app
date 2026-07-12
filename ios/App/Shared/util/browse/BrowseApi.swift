@@ -1,9 +1,9 @@
 //
-//  CarPlayApi.swift
+//  BrowseApi.swift
 //  App
 //
 //  Native browse data access for CarPlay (and future SDK-dependent surfaces). Fetches the browse
-//  endpoints through the generated ABSApiClient and maps them into CarPlayListItem view models.
+//  endpoints through the generated ABSApiClient and maps them into BrowseItem view models.
 //  Server sources return [] on ANY failure (offline, non-2xx, decode) so the CarPlay UI can always
 //  fall back to the on-device Downloads section.
 //
@@ -11,26 +11,26 @@
 import Foundation
 import ABSApiClient
 
-enum CarPlayApi {
+enum BrowseApi {
     /// "Continue Listening" — the user's in-progress items (server, user-wide).
-    static func continueListening(limit: Int = 25) async -> [CarPlayListItem] {
+    static func continueListening(limit: Int = 25) async -> [BrowseItem] {
         guard let config = ABSClientProvider.config else { return [] }
         guard let data = await ABSApiClient.fetchItemsInProgressData(config: config, limit: limit) else { return [] }
-        return CarPlayListItem.fromItemsInProgress(data: data, serverAddress: Store.serverConfig?.address)
+        return BrowseItem.fromItemsInProgress(data: data, serverAddress: Store.serverConfig?.address)
     }
 
     /// "Recently Added" — the recently-added shelf of a library's personalized view (server).
-    static func recentlyAdded(libraryId: String, limit: Int = 10) async -> [CarPlayListItem] {
+    static func recentlyAdded(libraryId: String, limit: Int = 10) async -> [BrowseItem] {
         guard let config = ABSClientProvider.config else { return [] }
         guard let data = await ABSApiClient.fetchPersonalizedShelvesData(config: config, libraryId: libraryId, limit: limit) else { return [] }
-        return CarPlayListItem.fromPersonalizedRecentlyAdded(data: data, serverAddress: Store.serverConfig?.address)
+        return BrowseItem.fromPersonalizedRecentlyAdded(data: data, serverAddress: Store.serverConfig?.address)
     }
 
     /// "Downloads" — books available offline on the device. Always works (no network).
-    static func downloads() -> [CarPlayListItem] {
+    static func downloads() -> [BrowseItem] {
         Database.shared.getLocalLibraryItems()
             .filter { $0.mediaType == "book" }
-            .map { CarPlayListItem.from(local: $0) }
+            .map { BrowseItem.from(local: $0) }
     }
 
     /// The id of the user's first book library — used to scope the "Recently Added" shelf.

@@ -30,11 +30,11 @@ final class CarPlayManager {
 
     private func reload() async {
         // Downloads are local and synchronous; the server sources load over the network.
-        let downloads = CarPlayApi.downloads()
-        let continueListening = await CarPlayApi.continueListening()
-        var recentlyAdded: [CarPlayListItem] = []
-        if let libraryId = await CarPlayApi.firstBookLibraryId() {
-            recentlyAdded = await CarPlayApi.recentlyAdded(libraryId: libraryId)
+        let downloads = BrowseApi.downloads()
+        let continueListening = await BrowseApi.continueListening()
+        var recentlyAdded: [BrowseItem] = []
+        if let libraryId = await BrowseApi.firstBookLibraryId() {
+            recentlyAdded = await BrowseApi.recentlyAdded(libraryId: libraryId)
         }
 
         let sections = buildSections(continueListening: continueListening,
@@ -43,11 +43,11 @@ final class CarPlayManager {
         await MainActor.run { self.rootTemplate.updateSections(sections) }
     }
 
-    private func buildSections(continueListening: [CarPlayListItem],
-                               recentlyAdded: [CarPlayListItem],
-                               downloads: [CarPlayListItem]) -> [CPListSection] {
+    private func buildSections(continueListening: [BrowseItem],
+                               recentlyAdded: [BrowseItem],
+                               downloads: [BrowseItem]) -> [CPListSection] {
         var sections: [CPListSection] = []
-        func addSection(_ title: String, _ items: [CarPlayListItem]) {
+        func addSection(_ title: String, _ items: [BrowseItem]) {
             guard !items.isEmpty else { return }
             sections.append(CPListSection(items: items.map(makeRow), header: title, sectionIndexTitle: nil))
         }
@@ -63,12 +63,12 @@ final class CarPlayManager {
 
     // MARK: - Rows
 
-    private func makeRow(_ item: CarPlayListItem) -> CPListItem {
+    private func makeRow(_ item: BrowseItem) -> CPListItem {
         let row = CPListItem(text: item.title, detailText: item.author)
         row.handler = { [weak self] _, completion in
             completion() // acknowledge the tap immediately
             Task { @MainActor in
-                CarPlayPlaybackStarter.play(item) {
+                BrowsePlaybackStarter.play(item) {
                     self?.interfaceController.pushTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
                 }
             }
@@ -77,7 +77,7 @@ final class CarPlayManager {
         return row
     }
 
-    private func loadCover(_ item: CarPlayListItem, into row: CPListItem) {
+    private func loadCover(_ item: BrowseItem, into row: CPListItem) {
         guard let url = item.coverURL else { return }
         ApiClient.getData(from: url) { image in
             guard let image = image else { return }
