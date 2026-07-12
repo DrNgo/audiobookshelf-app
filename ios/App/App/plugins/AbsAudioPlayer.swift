@@ -60,7 +60,13 @@ public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func onReady(_ call: CAPPluginCall) {
-        // TODO: Was used to notify when Abs UI was ready so that last played media could be opened - this was buggy and removed
+        // If native playback is already active (started from the widget / CarPlay before the WebView
+        // finished loading), the earlier onPlaybackSession/onMetadata events were sent with no JS
+        // listeners registered and were lost — leaving the player UI unsynced (0:00 / -0:00). Now
+        // that the UI is ready and listening, push the current session again.
+        if PlayerHandler.getPlaybackSession() != nil {
+            self.sendCurrentPlaybackSession()
+        }
         call.resolve()
     }
 

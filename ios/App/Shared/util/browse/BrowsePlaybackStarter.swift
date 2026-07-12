@@ -19,11 +19,15 @@ enum BrowsePlaybackStarter {
         PlayerHandler.stopPlayback()
         let rate = PlayerSettings.main().playbackRate
 
-        if item.isLocal {
-            guard let local = Database.shared.getLocalLibraryItem(localLibraryItemId: item.id) else {
-                AbsLogger.error(message: "CarPlay: no local item for \(item.id)")
-                return
-            }
+        // Prefer a downloaded copy: its local session carries the real duration + local progress and
+        // plays offline. continueListening returns SERVER items even for downloaded books, so also
+        // look one up by server id — otherwise a fresh server session would start at 0 with no
+        // duration, exactly what the phone player would never do for a downloaded book.
+        let localItem = item.isLocal
+            ? Database.shared.getLocalLibraryItem(localLibraryItemId: item.id)
+            : Database.shared.getLocalLibraryItem(byServerLibraryItemId: item.id)
+
+        if let local = localItem {
             let session = local.getPlaybackSession(episode: nil)
             do {
                 try session.save()
@@ -31,7 +35,7 @@ enum BrowsePlaybackStarter {
                 notifyWebLayer()
                 onStarted()
             } catch {
-                AbsLogger.error(message: "CarPlay: failed to start local session: \(error)")
+                AbsLogger.error(message: "Browse: failed to start local session: \(error)")
             }
         } else {
             // Callback is delivered on the main actor by ApiClient.startPlaybackSession.
