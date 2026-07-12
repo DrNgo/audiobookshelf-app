@@ -18,6 +18,8 @@ import CoreImage
 
 struct AudiobookEntry: TimelineEntry {
     let date: Date
+    let libraryItemId: String?
+    let episodeId: String?
     let title: String
     let author: String?
     let cover: UIImage?
@@ -28,10 +30,21 @@ struct AudiobookEntry: TimelineEntry {
 
     var progress: Double { duration > 0 ? min(max(currentTime / duration, 0), 1) : 0 }
 
-    static func empty(_ message: String) -> AudiobookEntry {
-        AudiobookEntry(date: Date(), title: message, author: nil, cover: nil, currentTime: 0, duration: 0, isPlaying: false, hasContent: false)
+    /// Tap target: resume the exact item shown, so the app doesn't resume a stale loaded session.
+    /// Falls back to the id-less link (most-recent in-progress) when we don't have an id.
+    var resumeURL: URL? {
+        guard let id = libraryItemId else { return URL(string: "audiobookshelf://resume") }
+        var comps = URLComponents(string: "audiobookshelf://resume")
+        var items = [URLQueryItem(name: "libraryItemId", value: id)]
+        if let episodeId = episodeId { items.append(URLQueryItem(name: "episodeId", value: episodeId)) }
+        comps?.queryItems = items
+        return comps?.url
     }
-    static let placeholder = AudiobookEntry(date: Date(), title: "Your Audiobook", author: "Author",
+
+    static func empty(_ message: String) -> AudiobookEntry {
+        AudiobookEntry(date: Date(), libraryItemId: nil, episodeId: nil, title: message, author: nil, cover: nil, currentTime: 0, duration: 0, isPlaying: false, hasContent: false)
+    }
+    static let placeholder = AudiobookEntry(date: Date(), libraryItemId: nil, episodeId: nil, title: "Your Audiobook", author: "Author",
                                             cover: nil, currentTime: 1800, duration: 7200, isPlaying: false, hasContent: true)
 }
 
@@ -63,6 +76,8 @@ struct AudiobookProvider: TimelineProvider {
         let cover = await loadCover(serverURL: creds.serverURL, token: creds.token, id: id)
         return AudiobookEntry(
             date: Date(),
+            libraryItemId: id,
+            episodeId: item.recentEpisode?.id,
             title: item.media?.metadata?.title ?? "Audiobook",
             author: item.media?.metadata?.authorName,
             cover: cover,
@@ -97,11 +112,13 @@ struct AudiobookProvider: TimelineProvider {
         struct Item: Decodable {
             let id: String?
             let media: Media?
+            let recentEpisode: Episode?
             struct Media: Decodable {
                 let duration: Double?
                 let metadata: Meta?
                 struct Meta: Decodable { let title: String?; let authorName: String? }
             }
+            struct Episode: Decodable { let id: String? }
         }
     }
     private struct Progress: Decodable { let currentTime: Double?; let duration: Double? }
@@ -182,7 +199,7 @@ struct AudiobookshelfWidgetEntryView: View {
 
     var body: some View {
         content
-            .widgetURL(URL(string: "audiobookshelf://resume"))
+            .widgetURL(entry.resumeURL)
             .widgetBackground(palette.background)
     }
 

@@ -13,6 +13,7 @@ import { AbsAudioPlayer, AbsLogger } from '@/plugins/capacitor'
 import { App } from '@capacitor/app'
 import { Dialog } from '@capacitor/dialog'
 import CellularPermissionHelpers from '@/mixins/cellularPermissionHelpers'
+import { parseWidgetResumeUrl } from '@/plugins/widgetResume'
 
 export default {
   data() {
@@ -39,7 +40,7 @@ export default {
       currentEndOfChapterTime: 0,
       serverLibraryItemId: null,
       serverEpisodeId: null,
-      widgetResumeStarted: false
+      widgetResumeInFlight: false
     }
   },
   mixins: [CellularPermissionHelpers],
@@ -285,54 +286,72 @@ export default {
     /**
      * Handle the home-screen widget's tap-to-resume deep link (`audiobookshelf://resume`).
      *
-     * Routed through the web — rather than started natively — so it flows through the app's own mature
-     * play flow (prepareLibraryItem), which resumes from the saved position with the correct duration
-     * and no error. A cold launch reaches here via `App.getLaunchUrl()` (checked on mount); a warm
-     * launch reaches here via the `'url-open'` event (Capacitor `appUrlOpen`). The link can arrive via
-     * both, so the cold path is guarded by `widgetResumeStarted` and re-checks after each await.
+     * The widget embeds the exact item it is displaying (`?libraryItemId=…&episodeId=…`), so tapping it
+     * always resumes THAT book — even when a different book is still loaded in the player from before
+     * (a warm launch). Routed through the web — rather than started natively — so it flows through the
+     * app's own mature play flow (`playLibraryItem` → `prepareLibraryItem`), which resumes from the
+     * saved position with the correct duration and no error, and which resumes-in-place when the
+     * requested book is already the loaded session (so we don't rewind/restart it).
+     *
+     * A cold launch reaches here via `App.getLaunchUrl()` (checked on mount); a warm launch via the
+     * `'url-open'` event (Capacitor `appUrlOpen`). On cold launch the same link can arrive via both, so
+     * `widgetResumeInFlight` de-dupes concurrent starts; it is reset once the start completes so a
+     * later, deliberate tap on the widget still works.
+     *
+     * Legacy widgets send the id-less `audiobookshelf://resume`; those fall back to the most-recent
+     * in-progress item.
      */
     async onUrlOpen(url) {
-      if (!url || !url.startsWith('audiobookshelf://resume')) return
+      const resume = parseWidgetResumeUrl(url)
+      if (!resume) return
       await AbsLogger.info({ tag: 'AudioPlayerContainer', message: 'onUrlOpen: widget resume link received' })
 
-      // Warm launch: a book is already loaded in the player — just ensure it's playing rather than
-      // restarting it (avoid interrupting/rewinding the current book).
-      if (this.currentPlaybackSession) {
-        if (this.$refs.audioPlayer && !this.$refs.audioPlayer.isPlaying) {
-          this.$refs.audioPlayer.play()
-        }
+      // Requested book is already the loaded session — just ensure it's playing (don't restart it).
+      if (resume.libraryItemId && this.$store.getters['getIsMediaStreaming'](resume.libraryItemId, resume.episodeId)) {
+        if (this.$refs.audioPlayer && !this.$refs.audioPlayer.isPlaying) this.$refs.audioPlayer.play()
         return
       }
 
-      // Cold launch: nothing loaded yet. Resume the most-recent in-progress item through the normal
-      // play flow — but only once per launch (the link can arrive via both getLaunchUrl and appUrlOpen).
-      if (this.widgetResumeStarted) return
-
-      const ready = await this.waitForServerReady()
-      if (!ready) {
-        console.warn('[AudioPlayerContainer] onUrlOpen: not connected, cannot resume widget link')
+      // Legacy id-less link with a book already loaded: resume whatever's loaded (old behavior).
+      if (!resume.libraryItemId && this.currentPlaybackSession) {
+        if (this.$refs.audioPlayer && !this.$refs.audioPlayer.isPlaying) this.$refs.audioPlayer.play()
         return
       }
-      // Re-check after the await: a concurrent trigger may have already started, or the player may
-      // have loaded a session in the meantime.
-      if (this.widgetResumeStarted || this.currentPlaybackSession) return
+
+      // A start is already in flight (e.g. the cold-launch link arriving via both getLaunchUrl and
+      // appUrlOpen) — let it proceed rather than kicking off a duplicate.
+      if (this.widgetResumeInFlight) return
+      this.widgetResumeInFlight = true
 
       try {
-        const data = await this.$nativeHttp.get('/api/me/items-in-progress?limit=1')
-        if (this.widgetResumeStarted || this.currentPlaybackSession) return
-        const item = data?.libraryItems?.[0]
-        if (!item?.id) {
-          console.warn('[AudioPlayerContainer] onUrlOpen: no in-progress item to resume')
+        const ready = await this.waitForServerReady()
+        if (!ready) {
+          console.warn('[AudioPlayerContainer] onUrlOpen: not connected, cannot resume widget link')
           return
         }
-        // Set the guard synchronously (no await before the emit) so a concurrent trigger can't also emit.
-        this.widgetResumeStarted = true
-        const libraryItemId = item.id
-        const episodeId = item.recentEpisode?.id
+        // Re-check after the await: the requested book may have started streaming in the meantime.
+        if (resume.libraryItemId && this.$store.getters['getIsMediaStreaming'](resume.libraryItemId, resume.episodeId)) return
+
+        let libraryItemId = resume.libraryItemId
+        let episodeId = resume.episodeId
+        if (!libraryItemId) {
+          // Legacy widget: resolve the most-recent in-progress item ourselves.
+          const data = await this.$nativeHttp.get('/api/me/items-in-progress?limit=1')
+          const item = data?.libraryItems?.[0]
+          if (!item?.id) {
+            console.warn('[AudioPlayerContainer] onUrlOpen: no in-progress item to resume')
+            return
+          }
+          libraryItemId = item.id
+          episodeId = item.recentEpisode?.id
+        }
+
         await AbsLogger.info({ tag: 'AudioPlayerContainer', message: `onUrlOpen: resuming ${libraryItemId}${episodeId ? ` episode ${episodeId}` : ''}` })
         this.$eventBus.$emit('play-item', { libraryItemId, episodeId })
       } catch (error) {
-        console.error('[AudioPlayerContainer] onUrlOpen: failed to fetch in-progress item', error)
+        console.error('[AudioPlayerContainer] onUrlOpen: failed to resume widget link', error)
+      } finally {
+        this.widgetResumeInFlight = false
       }
     },
     /**
