@@ -71,6 +71,27 @@ final class BrowseItemTests: XCTestCase {
         XCTAssertTrue(BrowseItem.fromPersonalizedRecentlyAdded(data: Data("{}".utf8), serverAddress: server).isEmpty)
     }
 
+    func testSearchMapsBookMatches() {
+        let json = Data("""
+        {
+          "book": [
+            { "matchKey": "title", "matchText": "Dune", "libraryItem": { "id": "li_d", "media": { "coverPath": "/d.webp", "metadata": { "title": "Dune", "authorName": "Frank Herbert" } } } },
+            { "matchKey": "authors", "matchText": "x", "libraryItem": { "id": "li_e", "media": { "metadata": { "title": "Dune Messiah" } } } }
+          ],
+          "authors": [ { "name": "ignored" } ]
+        }
+        """.utf8)
+        let rows = BrowseItem.fromSearch(data: json, serverAddress: server)
+        XCTAssertEqual(rows.map(\.id), ["li_d", "li_e"])
+        XCTAssertEqual(rows[0].author, "Frank Herbert")
+        XCTAssertEqual(rows[0].coverURL, URL(string: "https://abs.example.com/api/items/li_d/cover?format=jpeg"))
+    }
+
+    func testSearchEmptyOnMalformed() {
+        XCTAssertTrue(BrowseItem.fromSearch(data: Data("[]".utf8), serverAddress: server).isEmpty)
+        XCTAssertTrue(BrowseItem.fromSearch(data: Data("{\"book\":[]}".utf8), serverAddress: server).isEmpty)
+    }
+
     func testCoverURLGating() {
         XCTAssertNil(BrowseItem.coverURL(libraryItemId: "x", hasCover: false, serverAddress: server))
         XCTAssertNil(BrowseItem.coverURL(libraryItemId: "x", hasCover: true, serverAddress: nil))

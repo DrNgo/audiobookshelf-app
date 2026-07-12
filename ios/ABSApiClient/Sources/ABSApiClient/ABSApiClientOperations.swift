@@ -93,6 +93,15 @@ extension ABSApiClient {
         }
     }
 
+    /// GET /api/libraries/{id}/search?q= — raw JSON grouped matches (`book`, `series`, …), for the app
+    /// to decode the items it needs (e.g. Siri "Play [title]" search). Nil on failure.
+    public static func fetchLibrarySearchData(config: ABSClientConfig, libraryId: String, query: String, limit: Int = 12) async -> Data? {
+        await perform(config) { client in
+            guard case let .ok(ok) = try await client.searchLibrary(.init(path: .init(id: libraryId), query: .init(q: query, limit: limit))) else { return nil }
+            return try JSONEncoder().encode(ok.body.json)
+        }
+    }
+
     // MARK: - Writes
 
     /// PATCH /api/me/progress/{libraryItemId}[/{episodeId}] with a partial progress update.

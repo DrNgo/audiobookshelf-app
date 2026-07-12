@@ -43,4 +43,12 @@ enum BrowseApi {
         guard let resp = try? JSONDecoder().decode(Response.self, from: data) else { return nil }
         return resp.libraries?.first(where: { $0.mediaType == "book" })?.id
     }
+
+    /// Search the first book library for `query` and return matching books. [] on failure/no library.
+    static func search(query: String, limit: Int = 12) async -> [BrowseItem] {
+        guard let config = ABSClientProvider.config else { return [] }
+        guard let libraryId = await firstBookLibraryId() else { return [] }
+        guard let data = await ABSApiClient.fetchLibrarySearchData(config: config, libraryId: libraryId, query: query, limit: limit) else { return [] }
+        return BrowseItem.fromSearch(data: data, serverAddress: Store.serverConfig?.address)
+    }
 }

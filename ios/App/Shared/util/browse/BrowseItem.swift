@@ -47,6 +47,11 @@ extension BrowseItem {
         let entities: [MinifiedItem]?
     }
 
+    private struct SearchResponse: Decodable {
+        let book: [SearchMatch]?
+        struct SearchMatch: Decodable { let libraryItem: MinifiedItem? }
+    }
+
     /// Map `GET /api/me/items-in-progress` (`{ libraryItems: [...] }`) into rows. [] on decode failure.
     static func fromItemsInProgress(data: Data, serverAddress: String?) -> [BrowseItem] {
         guard let resp = try? JSONDecoder().decode(ItemsInProgressResponse.self, from: data) else { return [] }
@@ -59,6 +64,14 @@ extension BrowseItem {
         guard let shelves = try? JSONDecoder().decode([Shelf].self, from: data) else { return [] }
         guard let shelf = shelves.first(where: { $0.id == "recently-added" }) else { return [] }
         return (shelf.entities ?? []).compactMap { serverRow($0, serverAddress: serverAddress) }
+    }
+
+    /// Map `GET /api/libraries/{id}/search` book matches into rows. [] on decode failure.
+    static func fromSearch(data: Data, serverAddress: String?) -> [BrowseItem] {
+        guard let resp = try? JSONDecoder().decode(SearchResponse.self, from: data) else { return [] }
+        return (resp.book ?? []).compactMap { match in
+            match.libraryItem.flatMap { serverRow($0, serverAddress: serverAddress) }
+        }
     }
 
     private static func serverRow(_ item: MinifiedItem, serverAddress: String?) -> BrowseItem? {
