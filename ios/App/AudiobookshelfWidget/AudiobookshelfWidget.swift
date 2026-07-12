@@ -246,15 +246,10 @@ struct AudiobookshelfWidgetEntryView: View {
         if #available(iOS 17.0, *) {
             HStack(spacing: 26) {
                 Button(intent: WidgetSkipBackwardIntent()) { Image(systemName: "gobackward.10") }
-                if entry.isPlaying {
-                    // App is alive and playing — pause it in the background via the bridge.
-                    Button(intent: WidgetPlayPauseIntent()) { Image(systemName: "pause.fill").font(.system(size: 22)) }
-                } else {
-                    // Nothing playing — open the app and resume through its normal flow. A widget
-                    // can't reliably start audio while the app is suspended, so don't try.
-                    Link(destination: URL(string: "audiobookshelf://resume")!) {
-                        Image(systemName: "play.fill").font(.system(size: 22))
-                    }
+                // Play/pause via the bridge — resumes/pauses the loaded session in place without
+                // opening the app. (From a fully cold app, tap the widget body to open + resume.)
+                Button(intent: WidgetPlayPauseIntent()) {
+                    Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 22))
                 }
                 Button(intent: WidgetSkipForwardIntent()) { Image(systemName: "goforward.10") }
             }
