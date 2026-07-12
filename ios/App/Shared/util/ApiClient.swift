@@ -502,28 +502,18 @@ class ApiClient {
     }
     
     public static func reportPlaybackProgress(report: PlaybackReport, sessionId: String) async -> Bool {
-        return await withCheckedContinuation { continuation in
-            postResourceWithTokenRefresh(endpoint: "api/session/\(sessionId)/sync", parameters: report) { success in
-                continuation.resume(returning: success)
-            }
-        }
+        // Phase 3 migration: served solely by the generated ABSApiClient (no legacy fallback).
+        return await ABSApi.reportPlaybackProgress(report: report, sessionId: sessionId)
     }
-    
+
     public static func reportLocalPlaybackProgress(_ session: PlaybackSession) async -> Bool {
-        return await withCheckedContinuation { continuation in
-            postResourceWithTokenRefresh(endpoint: "api/session/local", parameters: session) { success in
-                continuation.resume(returning: success)
-            }
-        }
+        // Phase 3 migration: served solely by the generated ABSApiClient (no legacy fallback).
+        return await ABSApi.reportLocalPlaybackProgress(session)
     }
-    
+
     public static func reportAllLocalPlaybackSessions(_ sessions: [PlaybackSession]) async -> Bool {
-        return await withCheckedContinuation { continuation in
-            let payload = LocalPlaybackSessionSyncAllPayload(sessions: sessions, deviceInfo: sessions.first?.deviceInfo)
-            postResourceWithTokenRefresh(endpoint: "api/session/local-all", parameters: payload) { success in
-                continuation.resume(returning: success)
-            }
-        }
+        // Phase 3 migration: served solely by the generated ABSApiClient (no legacy fallback).
+        return await ABSApi.reportAllLocalPlaybackSessions(sessions)
     }
     
     public static func syncLocalSessionsWithServer(isFirstSync: Bool) async {
@@ -589,8 +579,10 @@ class ApiClient {
     
     public static func updateMediaProgress<T:Encodable>(libraryItemId: String, episodeId: String?, payload: T, callback: @escaping () -> Void) {
         AbsLogger.info(message: "updateMediaProgress \(libraryItemId) \(episodeId ?? "NIL") \(payload)")
-        let endpoint = episodeId?.isEmpty ?? true ? "api/me/progress/\(libraryItemId)" : "api/me/progress/\(libraryItemId)/\(episodeId ?? "")"
-        patchResourceWithTokenRefresh(endpoint: endpoint, parameters: payload) { _ in
+        // Phase 3 migration: served solely by the generated ABSApiClient (no legacy fallback).
+        // Preserves the fire-and-forget callback contract (invoked after the request completes).
+        Task {
+            _ = await ABSApi.updateMediaProgress(libraryItemId: libraryItemId, episodeId: episodeId, payload: payload)
             callback()
         }
     }
