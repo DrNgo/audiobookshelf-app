@@ -54,6 +54,14 @@ public protocol APIProtocol: Sendable {
     /// - Remark: HTTP `PATCH /api/me/progress/{libraryItemId}/{episodeId}`.
     /// - Remark: Generated from `#/paths//api/me/progress/{libraryItemId}/{episodeId}/patch(updatePodcastEpisodeMediaProgress)`.
     func updatePodcastEpisodeMediaProgress(_ input: Operations.updatePodcastEpisodeMediaProgress.Input) async throws -> Operations.updatePodcastEpisodeMediaProgress.Output
+    /// Get items in progress
+    ///
+    /// Get the authenticated user's library items that are in progress (not finished, with some listening or reading progress), most-recently-updated first. Each entry is a minified library item with an added `progressLastUpdate` (and, for podcasts, a `recentEpisode`). The items are large and already have a well-tested client-side model, so each entry is documented here as a freeform object and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/me/items-in-progress`.
+    /// - Remark: Generated from `#/paths//api/me/items-in-progress/get(getItemsInProgress)`.
+    func getItemsInProgress(_ input: Operations.getItemsInProgress.Input) async throws -> Operations.getItemsInProgress.Output
     /// Get a library item
     ///
     /// Get a single library item. With `expanded=1` the full media (audioFiles, chapters, podcast episodes, ebook file, etc.) is returned; with `include=progress` the user's media progress is embedded as `userMediaProgress`. The full expanded item is large and already has a well-tested client-side model, so the response is documented here as a freeform object and decoded by the client into its own type.
@@ -76,6 +84,21 @@ public protocol APIProtocol: Sendable {
     /// - Remark: HTTP `POST /api/items/{id}/play/{episodeId}`.
     /// - Remark: Generated from `#/paths//api/items/{id}/play/{episodeId}/post(playPodcastEpisode)`.
     func playPodcastEpisode(_ input: Operations.playPodcastEpisode.Input) async throws -> Operations.playPodcastEpisode.Output
+    /// Get an open session
+    ///
+    /// Get an open (in-progress) playback session by ID, expanded for the client.
+    ///
+    /// - Remark: HTTP `GET /api/session/{id}`.
+    /// - Remark: Generated from `#/paths//api/session/{id}/get(getPlaybackSession)`.
+    func getPlaybackSession(_ input: Operations.getPlaybackSession.Input) async throws -> Operations.getPlaybackSession.Output
+    /// Close an open session
+    ///
+    /// Close an open playback session. An optional final progress heartbeat may be sent in the body to sync before closing; send an empty body to close without a final sync.
+    ///
+    ///
+    /// - Remark: HTTP `POST /api/session/{id}/close`.
+    /// - Remark: Generated from `#/paths//api/session/{id}/close/post(closePlaybackSession)`.
+    func closePlaybackSession(_ input: Operations.closePlaybackSession.Input) async throws -> Operations.closePlaybackSession.Output
     /// Sync an open session
     ///
     /// Sync progress for an open playback session.
@@ -222,6 +245,30 @@ public protocol APIProtocol: Sendable {
     /// - Remark: HTTP `GET /api/libraries/{id}/authors`.
     /// - Remark: Generated from `#/paths//api/libraries/{id}/authors/get(getLibraryAuthors)`.
     func getLibraryAuthors(_ input: Operations.getLibraryAuthors.Input) async throws -> Operations.getLibraryAuthors.Output
+    /// Get personalized home shelves
+    ///
+    /// Get the personalized "home" shelves for a library (Continue Listening, Recently Added, Discover, etc.). Returns an ordered array of shelves; each shelf carries an array of `entities` whose shape varies by shelf `type` (books, series, authors, episodes). The entities are large, polymorphic, and already have well-tested client-side models, so each entity is documented here as a freeform object and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/libraries/{id}/personalized`.
+    /// - Remark: Generated from `#/paths//api/libraries/{id}/personalized/get(getLibraryPersonalizedView)`.
+    func getLibraryPersonalizedView(_ input: Operations.getLibraryPersonalizedView.Input) async throws -> Operations.getLibraryPersonalizedView.Output
+    /// Search a library
+    ///
+    /// Search a library's items by query string. Book libraries return matches grouped as `book`, `series`, `authors`, `narrators`, and `tags`; podcast libraries return `podcast` and `tags`. Each match wraps a large, well-modeled entity, so match entries are documented here as freeform objects and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/libraries/{id}/search`.
+    /// - Remark: Generated from `#/paths//api/libraries/{id}/search/get(searchLibrary)`.
+    func searchLibrary(_ input: Operations.searchLibrary.Input) async throws -> Operations.searchLibrary.Output
+    /// Get collections in a library
+    ///
+    /// Get the collections for a library, paginated. Each collection is large and already has a well-tested client-side model, so collections are documented here as freeform objects and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/libraries/{id}/collections`.
+    /// - Remark: Generated from `#/paths//api/libraries/{id}/collections/get(getLibraryCollections)`.
+    func getLibraryCollections(_ input: Operations.getLibraryCollections.Input) async throws -> Operations.getLibraryCollections.Output
     /// Get items in a library
     ///
     /// Get items in a library by ID on server.
@@ -475,6 +522,22 @@ extension APIProtocol {
             body: body
         ))
     }
+    /// Get items in progress
+    ///
+    /// Get the authenticated user's library items that are in progress (not finished, with some listening or reading progress), most-recently-updated first. Each entry is a minified library item with an added `progressLastUpdate` (and, for podcasts, a `recentEpisode`). The items are large and already have a well-tested client-side model, so each entry is documented here as a freeform object and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/me/items-in-progress`.
+    /// - Remark: Generated from `#/paths//api/me/items-in-progress/get(getItemsInProgress)`.
+    public func getItemsInProgress(
+        query: Operations.getItemsInProgress.Input.Query = .init(),
+        headers: Operations.getItemsInProgress.Input.Headers = .init()
+    ) async throws -> Operations.getItemsInProgress.Output {
+        try await getItemsInProgress(Operations.getItemsInProgress.Input(
+            query: query,
+            headers: headers
+        ))
+    }
     /// Get a library item
     ///
     /// Get a single library item. With `expanded=1` the full media (audioFiles, chapters, podcast episodes, ebook file, etc.) is returned; with `include=progress` the user's media progress is embedded as `userMediaProgress`. The full expanded item is large and already has a well-tested client-side model, so the response is documented here as a freeform object and decoded by the client into its own type.
@@ -522,6 +585,39 @@ extension APIProtocol {
         body: Operations.playPodcastEpisode.Input.Body? = nil
     ) async throws -> Operations.playPodcastEpisode.Output {
         try await playPodcastEpisode(Operations.playPodcastEpisode.Input(
+            path: path,
+            headers: headers,
+            body: body
+        ))
+    }
+    /// Get an open session
+    ///
+    /// Get an open (in-progress) playback session by ID, expanded for the client.
+    ///
+    /// - Remark: HTTP `GET /api/session/{id}`.
+    /// - Remark: Generated from `#/paths//api/session/{id}/get(getPlaybackSession)`.
+    public func getPlaybackSession(
+        path: Operations.getPlaybackSession.Input.Path,
+        headers: Operations.getPlaybackSession.Input.Headers = .init()
+    ) async throws -> Operations.getPlaybackSession.Output {
+        try await getPlaybackSession(Operations.getPlaybackSession.Input(
+            path: path,
+            headers: headers
+        ))
+    }
+    /// Close an open session
+    ///
+    /// Close an open playback session. An optional final progress heartbeat may be sent in the body to sync before closing; send an empty body to close without a final sync.
+    ///
+    ///
+    /// - Remark: HTTP `POST /api/session/{id}/close`.
+    /// - Remark: Generated from `#/paths//api/session/{id}/close/post(closePlaybackSession)`.
+    public func closePlaybackSession(
+        path: Operations.closePlaybackSession.Input.Path,
+        headers: Operations.closePlaybackSession.Input.Headers = .init(),
+        body: Operations.closePlaybackSession.Input.Body? = nil
+    ) async throws -> Operations.closePlaybackSession.Output {
+        try await closePlaybackSession(Operations.closePlaybackSession.Input(
             path: path,
             headers: headers,
             body: body
@@ -848,6 +944,60 @@ extension APIProtocol {
     ) async throws -> Operations.getLibraryAuthors.Output {
         try await getLibraryAuthors(Operations.getLibraryAuthors.Input(
             path: path,
+            headers: headers
+        ))
+    }
+    /// Get personalized home shelves
+    ///
+    /// Get the personalized "home" shelves for a library (Continue Listening, Recently Added, Discover, etc.). Returns an ordered array of shelves; each shelf carries an array of `entities` whose shape varies by shelf `type` (books, series, authors, episodes). The entities are large, polymorphic, and already have well-tested client-side models, so each entity is documented here as a freeform object and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/libraries/{id}/personalized`.
+    /// - Remark: Generated from `#/paths//api/libraries/{id}/personalized/get(getLibraryPersonalizedView)`.
+    public func getLibraryPersonalizedView(
+        path: Operations.getLibraryPersonalizedView.Input.Path,
+        query: Operations.getLibraryPersonalizedView.Input.Query = .init(),
+        headers: Operations.getLibraryPersonalizedView.Input.Headers = .init()
+    ) async throws -> Operations.getLibraryPersonalizedView.Output {
+        try await getLibraryPersonalizedView(Operations.getLibraryPersonalizedView.Input(
+            path: path,
+            query: query,
+            headers: headers
+        ))
+    }
+    /// Search a library
+    ///
+    /// Search a library's items by query string. Book libraries return matches grouped as `book`, `series`, `authors`, `narrators`, and `tags`; podcast libraries return `podcast` and `tags`. Each match wraps a large, well-modeled entity, so match entries are documented here as freeform objects and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/libraries/{id}/search`.
+    /// - Remark: Generated from `#/paths//api/libraries/{id}/search/get(searchLibrary)`.
+    public func searchLibrary(
+        path: Operations.searchLibrary.Input.Path,
+        query: Operations.searchLibrary.Input.Query,
+        headers: Operations.searchLibrary.Input.Headers = .init()
+    ) async throws -> Operations.searchLibrary.Output {
+        try await searchLibrary(Operations.searchLibrary.Input(
+            path: path,
+            query: query,
+            headers: headers
+        ))
+    }
+    /// Get collections in a library
+    ///
+    /// Get the collections for a library, paginated. Each collection is large and already has a well-tested client-side model, so collections are documented here as freeform objects and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/libraries/{id}/collections`.
+    /// - Remark: Generated from `#/paths//api/libraries/{id}/collections/get(getLibraryCollections)`.
+    public func getLibraryCollections(
+        path: Operations.getLibraryCollections.Input.Path,
+        query: Operations.getLibraryCollections.Input.Query = .init(),
+        headers: Operations.getLibraryCollections.Input.Headers = .init()
+    ) async throws -> Operations.getLibraryCollections.Output {
+        try await getLibraryCollections(Operations.getLibraryCollections.Input(
+            path: path,
+            query: query,
             headers: headers
         ))
     }
@@ -6175,6 +6325,183 @@ public enum Operations {
             }
         }
     }
+    /// Get items in progress
+    ///
+    /// Get the authenticated user's library items that are in progress (not finished, with some listening or reading progress), most-recently-updated first. Each entry is a minified library item with an added `progressLastUpdate` (and, for podcasts, a `recentEpisode`). The items are large and already have a well-tested client-side model, so each entry is documented here as a freeform object and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/me/items-in-progress`.
+    /// - Remark: Generated from `#/paths//api/me/items-in-progress/get(getItemsInProgress)`.
+    public enum getItemsInProgress {
+        public static let id: Swift.String = "getItemsInProgress"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/me/items-in-progress/GET/query`.
+            public struct Query: Sendable, Hashable {
+                /// Maximum number of items to return.
+                ///
+                /// - Remark: Generated from `#/paths/api/me/items-in-progress/GET/query/limit`.
+                public var limit: Swift.Int?
+                /// Creates a new `Query`.
+                ///
+                /// - Parameters:
+                ///   - limit: Maximum number of items to return.
+                public init(limit: Swift.Int? = nil) {
+                    self.limit = limit
+                }
+            }
+            public var query: Operations.getItemsInProgress.Input.Query
+            /// - Remark: Generated from `#/paths/api/me/items-in-progress/GET/header`.
+            public struct Headers: Sendable, Hashable {
+                public var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.getItemsInProgress.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                public init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.getItemsInProgress.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            public var headers: Operations.getItemsInProgress.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - query:
+            ///   - headers:
+            public init(
+                query: Operations.getItemsInProgress.Input.Query = .init(),
+                headers: Operations.getItemsInProgress.Input.Headers = .init()
+            ) {
+                self.query = query
+                self.headers = headers
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/me/items-in-progress/GET/responses/200/content`.
+                @frozen public enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/me/items-in-progress/GET/responses/200/content/json`.
+                    public struct jsonPayload: Codable, Hashable, Sendable {
+                        /// - Remark: Generated from `#/paths/api/me/items-in-progress/GET/responses/200/content/json/libraryItems`.
+                        public var libraryItems: [OpenAPIRuntime.OpenAPIObjectContainer]?
+                        /// Creates a new `jsonPayload`.
+                        ///
+                        /// - Parameters:
+                        ///   - libraryItems:
+                        public init(libraryItems: [OpenAPIRuntime.OpenAPIObjectContainer]? = nil) {
+                            self.libraryItems = libraryItems
+                        }
+                        public enum CodingKeys: String, CodingKey {
+                            case libraryItems
+                        }
+                    }
+                    /// - Remark: Generated from `#/paths/api/me/items-in-progress/GET/responses/200/content/application\/json`.
+                    case json(Operations.getItemsInProgress.Output.Ok.Body.jsonPayload)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    public var json: Operations.getItemsInProgress.Output.Ok.Body.jsonPayload {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                public var body: Operations.getItemsInProgress.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                public init(body: Operations.getItemsInProgress.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// The user's in-progress items.
+            ///
+            /// - Remark: Generated from `#/paths//api/me/items-in-progress/get(getItemsInProgress)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.getItemsInProgress.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            public var ok: Operations.getItemsInProgress.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Unauthorized. The access token is missing or invalid.
+            ///
+            /// - Remark: Generated from `#/paths//api/me/items-in-progress/get(getItemsInProgress)/responses/401`.
+            ///
+            /// HTTP response code: `401 unauthorized`.
+            case unauthorized(Components.Responses.unauthorized401)
+            /// The associated value of the enum case if `self` is `.unauthorized`.
+            ///
+            /// - Throws: An error if `self` is not `.unauthorized`.
+            /// - SeeAlso: `.unauthorized`.
+            public var unauthorized: Components.Responses.unauthorized401 {
+                get throws {
+                    switch self {
+                    case let .unauthorized(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "unauthorized",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        @frozen public enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case html
+            case other(Swift.String)
+            public init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                case "text/html":
+                    self = .html
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            public var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                case .html:
+                    return "text/html"
+                }
+            }
+            public static var allCases: [Self] {
+                [
+                    .json,
+                    .html
+                ]
+            }
+        }
+    }
     /// Get a library item
     ///
     /// Get a single library item. With `expanded=1` the full media (audioFiles, chapters, podcast episodes, ebook file, etc.) is returned; with `include=progress` the user's media progress is embedded as `userMediaProgress`. The full expanded item is large and already has a well-tested client-side model, so the response is documented here as a freeform object and decoded by the client into its own type.
@@ -6750,6 +7077,316 @@ public enum Operations {
             public static var allCases: [Self] {
                 [
                     .json,
+                    .html
+                ]
+            }
+        }
+    }
+    /// Get an open session
+    ///
+    /// Get an open (in-progress) playback session by ID, expanded for the client.
+    ///
+    /// - Remark: HTTP `GET /api/session/{id}`.
+    /// - Remark: Generated from `#/paths//api/session/{id}/get(getPlaybackSession)`.
+    public enum getPlaybackSession {
+        public static let id: Swift.String = "getPlaybackSession"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/session/{id}/GET/path`.
+            public struct Path: Sendable, Hashable {
+                /// The ID of the playback session.
+                ///
+                /// - Remark: Generated from `#/paths/api/session/{id}/GET/path/id`.
+                public var id: Components.Schemas.playbackSessionId
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - id: The ID of the playback session.
+                public init(id: Components.Schemas.playbackSessionId) {
+                    self.id = id
+                }
+            }
+            public var path: Operations.getPlaybackSession.Input.Path
+            /// - Remark: Generated from `#/paths/api/session/{id}/GET/header`.
+            public struct Headers: Sendable, Hashable {
+                public var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.getPlaybackSession.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                public init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.getPlaybackSession.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            public var headers: Operations.getPlaybackSession.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - headers:
+            public init(
+                path: Operations.getPlaybackSession.Input.Path,
+                headers: Operations.getPlaybackSession.Input.Headers = .init()
+            ) {
+                self.path = path
+                self.headers = headers
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/session/{id}/GET/responses/200/content`.
+                @frozen public enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/session/{id}/GET/responses/200/content/application\/json`.
+                    case json(Components.Schemas.playbackSession)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    public var json: Components.Schemas.playbackSession {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                public var body: Operations.getPlaybackSession.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                public init(body: Operations.getPlaybackSession.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// The open playback session.
+            ///
+            /// - Remark: Generated from `#/paths//api/session/{id}/get(getPlaybackSession)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.getPlaybackSession.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            public var ok: Operations.getPlaybackSession.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Playback session not found.
+            ///
+            /// - Remark: Generated from `#/paths//api/session/{id}/get(getPlaybackSession)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            case notFound(Components.Responses.session404)
+            /// The associated value of the enum case if `self` is `.notFound`.
+            ///
+            /// - Throws: An error if `self` is not `.notFound`.
+            /// - SeeAlso: `.notFound`.
+            public var notFound: Components.Responses.session404 {
+                get throws {
+                    switch self {
+                    case let .notFound(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "notFound",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        @frozen public enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case html
+            case other(Swift.String)
+            public init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                case "text/html":
+                    self = .html
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            public var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                case .html:
+                    return "text/html"
+                }
+            }
+            public static var allCases: [Self] {
+                [
+                    .json,
+                    .html
+                ]
+            }
+        }
+    }
+    /// Close an open session
+    ///
+    /// Close an open playback session. An optional final progress heartbeat may be sent in the body to sync before closing; send an empty body to close without a final sync.
+    ///
+    ///
+    /// - Remark: HTTP `POST /api/session/{id}/close`.
+    /// - Remark: Generated from `#/paths//api/session/{id}/close/post(closePlaybackSession)`.
+    public enum closePlaybackSession {
+        public static let id: Swift.String = "closePlaybackSession"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/session/{id}/close/POST/path`.
+            public struct Path: Sendable, Hashable {
+                /// The ID of the playback session.
+                ///
+                /// - Remark: Generated from `#/paths/api/session/{id}/close/POST/path/id`.
+                public var id: Components.Schemas.playbackSessionId
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - id: The ID of the playback session.
+                public init(id: Components.Schemas.playbackSessionId) {
+                    self.id = id
+                }
+            }
+            public var path: Operations.closePlaybackSession.Input.Path
+            /// - Remark: Generated from `#/paths/api/session/{id}/close/POST/header`.
+            public struct Headers: Sendable, Hashable {
+                public var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.closePlaybackSession.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                public init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.closePlaybackSession.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            public var headers: Operations.closePlaybackSession.Input.Headers
+            /// - Remark: Generated from `#/paths/api/session/{id}/close/POST/requestBody`.
+            @frozen public enum Body: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/session/{id}/close/POST/requestBody/content/application\/json`.
+                case json(Components.Schemas.playbackReport)
+            }
+            public var body: Operations.closePlaybackSession.Input.Body?
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - headers:
+            ///   - body:
+            public init(
+                path: Operations.closePlaybackSession.Input.Path,
+                headers: Operations.closePlaybackSession.Input.Headers = .init(),
+                body: Operations.closePlaybackSession.Input.Body? = nil
+            ) {
+                self.path = path
+                self.headers = headers
+                self.body = body
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct Ok: Sendable, Hashable {
+                /// Creates a new `Ok`.
+                public init() {}
+            }
+            /// The session was closed.
+            ///
+            /// - Remark: Generated from `#/paths//api/session/{id}/close/post(closePlaybackSession)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.closePlaybackSession.Output.Ok)
+            /// The session was closed.
+            ///
+            /// - Remark: Generated from `#/paths//api/session/{id}/close/post(closePlaybackSession)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            public static var ok: Self {
+                .ok(.init())
+            }
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            public var ok: Operations.closePlaybackSession.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Playback session not found.
+            ///
+            /// - Remark: Generated from `#/paths//api/session/{id}/close/post(closePlaybackSession)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            case notFound(Components.Responses.session404)
+            /// The associated value of the enum case if `self` is `.notFound`.
+            ///
+            /// - Throws: An error if `self` is not `.notFound`.
+            /// - SeeAlso: `.notFound`.
+            public var notFound: Components.Responses.session404 {
+                get throws {
+                    switch self {
+                    case let .notFound(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "notFound",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        @frozen public enum AcceptableContentType: AcceptableProtocol {
+            case html
+            case other(Swift.String)
+            public init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "text/html":
+                    self = .html
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            public var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .html:
+                    return "text/html"
+                }
+            }
+            public static var allCases: [Self] {
+                [
                     .html
                 ]
             }
@@ -10341,6 +10978,779 @@ public enum Operations {
             /// Library not found.
             ///
             /// - Remark: Generated from `#/paths//api/libraries/{id}/authors/get(getLibraryAuthors)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            case notFound(Components.Responses.library404)
+            /// The associated value of the enum case if `self` is `.notFound`.
+            ///
+            /// - Throws: An error if `self` is not `.notFound`.
+            /// - SeeAlso: `.notFound`.
+            public var notFound: Components.Responses.library404 {
+                get throws {
+                    switch self {
+                    case let .notFound(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "notFound",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        @frozen public enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case html
+            case other(Swift.String)
+            public init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                case "text/html":
+                    self = .html
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            public var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                case .html:
+                    return "text/html"
+                }
+            }
+            public static var allCases: [Self] {
+                [
+                    .json,
+                    .html
+                ]
+            }
+        }
+    }
+    /// Get personalized home shelves
+    ///
+    /// Get the personalized "home" shelves for a library (Continue Listening, Recently Added, Discover, etc.). Returns an ordered array of shelves; each shelf carries an array of `entities` whose shape varies by shelf `type` (books, series, authors, episodes). The entities are large, polymorphic, and already have well-tested client-side models, so each entity is documented here as a freeform object and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/libraries/{id}/personalized`.
+    /// - Remark: Generated from `#/paths//api/libraries/{id}/personalized/get(getLibraryPersonalizedView)`.
+    public enum getLibraryPersonalizedView {
+        public static let id: Swift.String = "getLibraryPersonalizedView"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/path`.
+            public struct Path: Sendable, Hashable {
+                /// The ID of the library.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/path/id`.
+                public var id: Components.Schemas.libraryId
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - id: The ID of the library.
+                public init(id: Components.Schemas.libraryId) {
+                    self.id = id
+                }
+            }
+            public var path: Operations.getLibraryPersonalizedView.Input.Path
+            /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/query`.
+            public struct Query: Sendable, Hashable {
+                /// Maximum number of entities per shelf.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/query/limit`.
+                public var limit: Swift.Int?
+                /// Comma-separated extra data to include (e.g. "rssfeed").
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/query/include`.
+                public var include: Swift.String?
+                /// Creates a new `Query`.
+                ///
+                /// - Parameters:
+                ///   - limit: Maximum number of entities per shelf.
+                ///   - include: Comma-separated extra data to include (e.g. "rssfeed").
+                public init(
+                    limit: Swift.Int? = nil,
+                    include: Swift.String? = nil
+                ) {
+                    self.limit = limit
+                    self.include = include
+                }
+            }
+            public var query: Operations.getLibraryPersonalizedView.Input.Query
+            /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/header`.
+            public struct Headers: Sendable, Hashable {
+                public var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.getLibraryPersonalizedView.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                public init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.getLibraryPersonalizedView.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            public var headers: Operations.getLibraryPersonalizedView.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - query:
+            ///   - headers:
+            public init(
+                path: Operations.getLibraryPersonalizedView.Input.Path,
+                query: Operations.getLibraryPersonalizedView.Input.Query = .init(),
+                headers: Operations.getLibraryPersonalizedView.Input.Headers = .init()
+            ) {
+                self.path = path
+                self.query = query
+                self.headers = headers
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/responses/200/content`.
+                @frozen public enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/responses/200/content/jsonPayload`.
+                    public struct jsonPayloadPayload: Codable, Hashable, Sendable {
+                        /// The shelf identifier (e.g. "continue-listening").
+                        ///
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/responses/200/content/jsonPayload/id`.
+                        public var id: Swift.String?
+                        /// The display label for the shelf.
+                        ///
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/responses/200/content/jsonPayload/label`.
+                        public var label: Swift.String?
+                        /// The i18n key for the shelf label.
+                        ///
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/responses/200/content/jsonPayload/labelStringKey`.
+                        public var labelStringKey: Swift.String?
+                        /// The entity type for the shelf (book, episode, series, authors, podcast).
+                        ///
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/responses/200/content/jsonPayload/type`.
+                        public var _type: Swift.String?
+                        /// The total number of entities available for the shelf.
+                        ///
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/responses/200/content/jsonPayload/total`.
+                        public var total: Swift.Int?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/responses/200/content/jsonPayload/entities`.
+                        public var entities: [OpenAPIRuntime.OpenAPIObjectContainer]?
+                        /// Creates a new `jsonPayloadPayload`.
+                        ///
+                        /// - Parameters:
+                        ///   - id: The shelf identifier (e.g. "continue-listening").
+                        ///   - label: The display label for the shelf.
+                        ///   - labelStringKey: The i18n key for the shelf label.
+                        ///   - _type: The entity type for the shelf (book, episode, series, authors, podcast).
+                        ///   - total: The total number of entities available for the shelf.
+                        ///   - entities:
+                        public init(
+                            id: Swift.String? = nil,
+                            label: Swift.String? = nil,
+                            labelStringKey: Swift.String? = nil,
+                            _type: Swift.String? = nil,
+                            total: Swift.Int? = nil,
+                            entities: [OpenAPIRuntime.OpenAPIObjectContainer]? = nil
+                        ) {
+                            self.id = id
+                            self.label = label
+                            self.labelStringKey = labelStringKey
+                            self._type = _type
+                            self.total = total
+                            self.entities = entities
+                        }
+                        public enum CodingKeys: String, CodingKey {
+                            case id
+                            case label
+                            case labelStringKey
+                            case _type = "type"
+                            case total
+                            case entities
+                        }
+                    }
+                    /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/responses/200/content/json`.
+                    public typealias jsonPayload = [Operations.getLibraryPersonalizedView.Output.Ok.Body.jsonPayloadPayload]
+                    /// - Remark: Generated from `#/paths/api/libraries/{id}/personalized/GET/responses/200/content/application\/json`.
+                    case json(Operations.getLibraryPersonalizedView.Output.Ok.Body.jsonPayload)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    public var json: Operations.getLibraryPersonalizedView.Output.Ok.Body.jsonPayload {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                public var body: Operations.getLibraryPersonalizedView.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                public init(body: Operations.getLibraryPersonalizedView.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// The personalized shelves for the library.
+            ///
+            /// - Remark: Generated from `#/paths//api/libraries/{id}/personalized/get(getLibraryPersonalizedView)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.getLibraryPersonalizedView.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            public var ok: Operations.getLibraryPersonalizedView.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Library not found.
+            ///
+            /// - Remark: Generated from `#/paths//api/libraries/{id}/personalized/get(getLibraryPersonalizedView)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            case notFound(Components.Responses.library404)
+            /// The associated value of the enum case if `self` is `.notFound`.
+            ///
+            /// - Throws: An error if `self` is not `.notFound`.
+            /// - SeeAlso: `.notFound`.
+            public var notFound: Components.Responses.library404 {
+                get throws {
+                    switch self {
+                    case let .notFound(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "notFound",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        @frozen public enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case html
+            case other(Swift.String)
+            public init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                case "text/html":
+                    self = .html
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            public var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                case .html:
+                    return "text/html"
+                }
+            }
+            public static var allCases: [Self] {
+                [
+                    .json,
+                    .html
+                ]
+            }
+        }
+    }
+    /// Search a library
+    ///
+    /// Search a library's items by query string. Book libraries return matches grouped as `book`, `series`, `authors`, `narrators`, and `tags`; podcast libraries return `podcast` and `tags`. Each match wraps a large, well-modeled entity, so match entries are documented here as freeform objects and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/libraries/{id}/search`.
+    /// - Remark: Generated from `#/paths//api/libraries/{id}/search/get(searchLibrary)`.
+    public enum searchLibrary {
+        public static let id: Swift.String = "searchLibrary"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/path`.
+            public struct Path: Sendable, Hashable {
+                /// The ID of the library.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/path/id`.
+                public var id: Components.Schemas.libraryId
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - id: The ID of the library.
+                public init(id: Components.Schemas.libraryId) {
+                    self.id = id
+                }
+            }
+            public var path: Operations.searchLibrary.Input.Path
+            /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/query`.
+            public struct Query: Sendable, Hashable {
+                /// The search query.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/query/q`.
+                public var q: Swift.String
+                /// Maximum number of matches per group.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/query/limit`.
+                public var limit: Swift.Int?
+                /// Creates a new `Query`.
+                ///
+                /// - Parameters:
+                ///   - q: The search query.
+                ///   - limit: Maximum number of matches per group.
+                public init(
+                    q: Swift.String,
+                    limit: Swift.Int? = nil
+                ) {
+                    self.q = q
+                    self.limit = limit
+                }
+            }
+            public var query: Operations.searchLibrary.Input.Query
+            /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/header`.
+            public struct Headers: Sendable, Hashable {
+                public var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.searchLibrary.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                public init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.searchLibrary.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            public var headers: Operations.searchLibrary.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - query:
+            ///   - headers:
+            public init(
+                path: Operations.searchLibrary.Input.Path,
+                query: Operations.searchLibrary.Input.Query,
+                headers: Operations.searchLibrary.Input.Headers = .init()
+            ) {
+                self.path = path
+                self.query = query
+                self.headers = headers
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/responses/200/content`.
+                @frozen public enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/responses/200/content/json`.
+                    public struct jsonPayload: Codable, Hashable, Sendable {
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/responses/200/content/json/book`.
+                        public var book: [OpenAPIRuntime.OpenAPIObjectContainer]?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/responses/200/content/json/podcast`.
+                        public var podcast: [OpenAPIRuntime.OpenAPIObjectContainer]?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/responses/200/content/json/series`.
+                        public var series: [OpenAPIRuntime.OpenAPIObjectContainer]?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/responses/200/content/json/authors`.
+                        public var authors: [OpenAPIRuntime.OpenAPIObjectContainer]?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/responses/200/content/json/narrators`.
+                        public var narrators: [OpenAPIRuntime.OpenAPIObjectContainer]?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/responses/200/content/json/tags`.
+                        public var tags: [OpenAPIRuntime.OpenAPIObjectContainer]?
+                        /// Creates a new `jsonPayload`.
+                        ///
+                        /// - Parameters:
+                        ///   - book:
+                        ///   - podcast:
+                        ///   - series:
+                        ///   - authors:
+                        ///   - narrators:
+                        ///   - tags:
+                        public init(
+                            book: [OpenAPIRuntime.OpenAPIObjectContainer]? = nil,
+                            podcast: [OpenAPIRuntime.OpenAPIObjectContainer]? = nil,
+                            series: [OpenAPIRuntime.OpenAPIObjectContainer]? = nil,
+                            authors: [OpenAPIRuntime.OpenAPIObjectContainer]? = nil,
+                            narrators: [OpenAPIRuntime.OpenAPIObjectContainer]? = nil,
+                            tags: [OpenAPIRuntime.OpenAPIObjectContainer]? = nil
+                        ) {
+                            self.book = book
+                            self.podcast = podcast
+                            self.series = series
+                            self.authors = authors
+                            self.narrators = narrators
+                            self.tags = tags
+                        }
+                        public enum CodingKeys: String, CodingKey {
+                            case book
+                            case podcast
+                            case series
+                            case authors
+                            case narrators
+                            case tags
+                        }
+                    }
+                    /// - Remark: Generated from `#/paths/api/libraries/{id}/search/GET/responses/200/content/application\/json`.
+                    case json(Operations.searchLibrary.Output.Ok.Body.jsonPayload)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    public var json: Operations.searchLibrary.Output.Ok.Body.jsonPayload {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                public var body: Operations.searchLibrary.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                public init(body: Operations.searchLibrary.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// The grouped search matches.
+            ///
+            /// - Remark: Generated from `#/paths//api/libraries/{id}/search/get(searchLibrary)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.searchLibrary.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            public var ok: Operations.searchLibrary.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Library not found.
+            ///
+            /// - Remark: Generated from `#/paths//api/libraries/{id}/search/get(searchLibrary)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            case notFound(Components.Responses.library404)
+            /// The associated value of the enum case if `self` is `.notFound`.
+            ///
+            /// - Throws: An error if `self` is not `.notFound`.
+            /// - SeeAlso: `.notFound`.
+            public var notFound: Components.Responses.library404 {
+                get throws {
+                    switch self {
+                    case let .notFound(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "notFound",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        @frozen public enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case html
+            case other(Swift.String)
+            public init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                case "text/html":
+                    self = .html
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            public var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                case .html:
+                    return "text/html"
+                }
+            }
+            public static var allCases: [Self] {
+                [
+                    .json,
+                    .html
+                ]
+            }
+        }
+    }
+    /// Get collections in a library
+    ///
+    /// Get the collections for a library, paginated. Each collection is large and already has a well-tested client-side model, so collections are documented here as freeform objects and decoded by the client.
+    ///
+    ///
+    /// - Remark: HTTP `GET /api/libraries/{id}/collections`.
+    /// - Remark: Generated from `#/paths//api/libraries/{id}/collections/get(getLibraryCollections)`.
+    public enum getLibraryCollections {
+        public static let id: Swift.String = "getLibraryCollections"
+        public struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/path`.
+            public struct Path: Sendable, Hashable {
+                /// The ID of the library.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/path/id`.
+                public var id: Components.Schemas.libraryId
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - id: The ID of the library.
+                public init(id: Components.Schemas.libraryId) {
+                    self.id = id
+                }
+            }
+            public var path: Operations.getLibraryCollections.Input.Path
+            /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/query`.
+            public struct Query: Sendable, Hashable {
+                /// The number of items to return. This the size of a single page for the optional `page` query.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/query/limit`.
+                public var limit: Components.Parameters.limit?
+                /// The page number (zero indexed) to return. If no limit is specified, then page will have no effect.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/query/page`.
+                public var page: Components.Parameters.page?
+                /// The field to sort by.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/query/sort`.
+                public var sort: Swift.String?
+                /// Return items in reversed order if true.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/query/desc`.
+                public var desc: Components.Parameters.desc?
+                /// The filter for the collections.
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/query/filter`.
+                public var filter: Swift.String?
+                /// Comma-separated extra data to include (e.g. "rssfeed").
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/query/include`.
+                public var include: Swift.String?
+                /// Return minified items if true
+                ///
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/query/minified`.
+                public var minified: Components.Parameters.minified?
+                /// Creates a new `Query`.
+                ///
+                /// - Parameters:
+                ///   - limit: The number of items to return. This the size of a single page for the optional `page` query.
+                ///   - page: The page number (zero indexed) to return. If no limit is specified, then page will have no effect.
+                ///   - sort: The field to sort by.
+                ///   - desc: Return items in reversed order if true.
+                ///   - filter: The filter for the collections.
+                ///   - include: Comma-separated extra data to include (e.g. "rssfeed").
+                ///   - minified: Return minified items if true
+                public init(
+                    limit: Components.Parameters.limit? = nil,
+                    page: Components.Parameters.page? = nil,
+                    sort: Swift.String? = nil,
+                    desc: Components.Parameters.desc? = nil,
+                    filter: Swift.String? = nil,
+                    include: Swift.String? = nil,
+                    minified: Components.Parameters.minified? = nil
+                ) {
+                    self.limit = limit
+                    self.page = page
+                    self.sort = sort
+                    self.desc = desc
+                    self.filter = filter
+                    self.include = include
+                    self.minified = minified
+                }
+            }
+            public var query: Operations.getLibraryCollections.Input.Query
+            /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/header`.
+            public struct Headers: Sendable, Hashable {
+                public var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.getLibraryCollections.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                public init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.getLibraryCollections.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            public var headers: Operations.getLibraryCollections.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - query:
+            ///   - headers:
+            public init(
+                path: Operations.getLibraryCollections.Input.Path,
+                query: Operations.getLibraryCollections.Input.Query = .init(),
+                headers: Operations.getLibraryCollections.Input.Headers = .init()
+            ) {
+                self.path = path
+                self.query = query
+                self.headers = headers
+            }
+        }
+        @frozen public enum Output: Sendable, Hashable {
+            public struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content`.
+                @frozen public enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/json`.
+                    public struct jsonPayload: Codable, Hashable, Sendable {
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/json/results`.
+                        public var results: [OpenAPIRuntime.OpenAPIObjectContainer]?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/json/total`.
+                        public var total: Components.Schemas.total?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/json/limit`.
+                        public var limit: Components.Schemas.limit?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/json/page`.
+                        public var page: Components.Schemas.page?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/json/sortBy`.
+                        public var sortBy: Components.Schemas.sortBy?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/json/sortDesc`.
+                        public var sortDesc: Components.Schemas.sortDesc?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/json/filterBy`.
+                        public var filterBy: Components.Schemas.filterBy?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/json/minified`.
+                        public var minified: Components.Schemas.minified?
+                        /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/json/include`.
+                        public var include: Components.Schemas.libraryInclude?
+                        /// Creates a new `jsonPayload`.
+                        ///
+                        /// - Parameters:
+                        ///   - results:
+                        ///   - total:
+                        ///   - limit:
+                        ///   - page:
+                        ///   - sortBy:
+                        ///   - sortDesc:
+                        ///   - filterBy:
+                        ///   - minified:
+                        ///   - include:
+                        public init(
+                            results: [OpenAPIRuntime.OpenAPIObjectContainer]? = nil,
+                            total: Components.Schemas.total? = nil,
+                            limit: Components.Schemas.limit? = nil,
+                            page: Components.Schemas.page? = nil,
+                            sortBy: Components.Schemas.sortBy? = nil,
+                            sortDesc: Components.Schemas.sortDesc? = nil,
+                            filterBy: Components.Schemas.filterBy? = nil,
+                            minified: Components.Schemas.minified? = nil,
+                            include: Components.Schemas.libraryInclude? = nil
+                        ) {
+                            self.results = results
+                            self.total = total
+                            self.limit = limit
+                            self.page = page
+                            self.sortBy = sortBy
+                            self.sortDesc = sortDesc
+                            self.filterBy = filterBy
+                            self.minified = minified
+                            self.include = include
+                        }
+                        public enum CodingKeys: String, CodingKey {
+                            case results
+                            case total
+                            case limit
+                            case page
+                            case sortBy
+                            case sortDesc
+                            case filterBy
+                            case minified
+                            case include
+                        }
+                    }
+                    /// - Remark: Generated from `#/paths/api/libraries/{id}/collections/GET/responses/200/content/application\/json`.
+                    case json(Operations.getLibraryCollections.Output.Ok.Body.jsonPayload)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    public var json: Operations.getLibraryCollections.Output.Ok.Body.jsonPayload {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                public var body: Operations.getLibraryCollections.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                public init(body: Operations.getLibraryCollections.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// The library's collections.
+            ///
+            /// - Remark: Generated from `#/paths//api/libraries/{id}/collections/get(getLibraryCollections)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.getLibraryCollections.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            public var ok: Operations.getLibraryCollections.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Library not found.
+            ///
+            /// - Remark: Generated from `#/paths//api/libraries/{id}/collections/get(getLibraryCollections)/responses/404`.
             ///
             /// HTTP response code: `404 notFound`.
             case notFound(Components.Responses.library404)

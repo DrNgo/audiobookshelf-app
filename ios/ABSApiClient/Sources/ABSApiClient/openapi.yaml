@@ -168,6 +168,40 @@ paths:
           description: The progress was created or updated.
         '401':
           $ref: '#/components/responses/unauthorized401'
+  /api/me/items-in-progress:
+    get:
+      operationId: getItemsInProgress
+      tags:
+        - Me
+      summary: Get items in progress
+      description: >
+        Get the authenticated user's library items that are in progress (not finished, with
+        some listening or reading progress), most-recently-updated first. Each entry is a
+        minified library item with an added `progressLastUpdate` (and, for podcasts, a
+        `recentEpisode`). The items are large and already have a well-tested client-side model,
+        so each entry is documented here as a freeform object and decoded by the client.
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          description: Maximum number of items to return.
+          schema:
+            type: integer
+            default: 25
+      responses:
+        '200':
+          description: The user's in-progress items.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  libraryItems:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/unauthorized401'
   /api/items/{id}:
     get:
       operationId: getLibraryItem
@@ -285,6 +319,57 @@ paths:
                 $ref: '#/components/schemas/playbackSession'
         '401':
           $ref: '#/components/responses/unauthorized401'
+  /api/session/{id}:
+    parameters:
+      - name: id
+        in: path
+        description: The ID of the playback session.
+        required: true
+        schema:
+          $ref: '#/components/schemas/playbackSessionId'
+    get:
+      operationId: getPlaybackSession
+      tags:
+        - Playback
+      summary: Get an open session
+      description: Get an open (in-progress) playback session by ID, expanded for the client.
+      responses:
+        '200':
+          description: The open playback session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/playbackSession'
+        '404':
+          $ref: '#/components/responses/session404'
+  /api/session/{id}/close:
+    parameters:
+      - name: id
+        in: path
+        description: The ID of the playback session.
+        required: true
+        schema:
+          $ref: '#/components/schemas/playbackSessionId'
+    post:
+      operationId: closePlaybackSession
+      tags:
+        - Playback
+      summary: Close an open session
+      description: >
+        Close an open playback session. An optional final progress heartbeat may be sent in the
+        body to sync before closing; send an empty body to close without a final sync.
+      requestBody:
+        required: false
+        description: An optional final progress heartbeat to sync before closing.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/playbackReport'
+      responses:
+        '200':
+          description: The session was closed.
+        '404':
+          $ref: '#/components/responses/session404'
   /api/session/{id}/sync:
     parameters:
       - name: id
@@ -819,6 +904,208 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/authorExpanded'
+        '404':
+          $ref: '#/components/responses/library404'
+  /api/libraries/{id}/personalized:
+    parameters:
+      - name: id
+        in: path
+        description: The ID of the library.
+        required: true
+        schema:
+          $ref: '#/components/schemas/libraryId'
+    get:
+      operationId: getLibraryPersonalizedView
+      tags:
+        - Libraries
+      summary: Get personalized home shelves
+      description: >
+        Get the personalized "home" shelves for a library (Continue Listening, Recently Added,
+        Discover, etc.). Returns an ordered array of shelves; each shelf carries an array of
+        `entities` whose shape varies by shelf `type` (books, series, authors, episodes). The
+        entities are large, polymorphic, and already have well-tested client-side models, so
+        each entity is documented here as a freeform object and decoded by the client.
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          description: Maximum number of entities per shelf.
+          schema:
+            type: integer
+            default: 10
+        - in: query
+          name: include
+          required: false
+          description: Comma-separated extra data to include (e.g. "rssfeed").
+          allowReserved: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The personalized shelves for the library.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      description: The shelf identifier (e.g. "continue-listening").
+                    label:
+                      type: string
+                      description: The display label for the shelf.
+                    labelStringKey:
+                      type: string
+                      description: The i18n key for the shelf label.
+                    type:
+                      type: string
+                      description: The entity type for the shelf (book, episode, series, authors, podcast).
+                    total:
+                      type: integer
+                      description: The total number of entities available for the shelf.
+                    entities:
+                      type: array
+                      items:
+                        type: object
+        '404':
+          $ref: '#/components/responses/library404'
+  /api/libraries/{id}/search:
+    parameters:
+      - name: id
+        in: path
+        description: The ID of the library.
+        required: true
+        schema:
+          $ref: '#/components/schemas/libraryId'
+    get:
+      operationId: searchLibrary
+      tags:
+        - Libraries
+      summary: Search a library
+      description: >
+        Search a library's items by query string. Book libraries return matches grouped as
+        `book`, `series`, `authors`, `narrators`, and `tags`; podcast libraries return `podcast`
+        and `tags`. Each match wraps a large, well-modeled entity, so match entries are
+        documented here as freeform objects and decoded by the client.
+      parameters:
+        - in: query
+          name: q
+          required: true
+          description: The search query.
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          description: Maximum number of matches per group.
+          schema:
+            type: integer
+            default: 12
+      responses:
+        '200':
+          description: The grouped search matches.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  book:
+                    type: array
+                    items:
+                      type: object
+                  podcast:
+                    type: array
+                    items:
+                      type: object
+                  series:
+                    type: array
+                    items:
+                      type: object
+                  authors:
+                    type: array
+                    items:
+                      type: object
+                  narrators:
+                    type: array
+                    items:
+                      type: object
+                  tags:
+                    type: array
+                    items:
+                      type: object
+        '404':
+          $ref: '#/components/responses/library404'
+  /api/libraries/{id}/collections:
+    parameters:
+      - name: id
+        in: path
+        description: The ID of the library.
+        required: true
+        schema:
+          $ref: '#/components/schemas/libraryId'
+    get:
+      operationId: getLibraryCollections
+      tags:
+        - Libraries
+      summary: Get collections in a library
+      description: >
+        Get the collections for a library, paginated. Each collection is large and already has a
+        well-tested client-side model, so collections are documented here as freeform objects and
+        decoded by the client.
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/page'
+        - in: query
+          name: sort
+          required: false
+          description: The field to sort by.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/desc'
+        - in: query
+          name: filter
+          required: false
+          description: The filter for the collections.
+          schema:
+            type: string
+        - in: query
+          name: include
+          required: false
+          description: Comma-separated extra data to include (e.g. "rssfeed").
+          allowReserved: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/minified'
+      responses:
+        '200':
+          description: The library's collections.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    $ref: '#/components/schemas/total'
+                  limit:
+                    $ref: '#/components/schemas/limit'
+                  page:
+                    $ref: '#/components/schemas/page'
+                  sortBy:
+                    $ref: '#/components/schemas/sortBy'
+                  sortDesc:
+                    $ref: '#/components/schemas/sortDesc'
+                  filterBy:
+                    $ref: '#/components/schemas/filterBy'
+                  minified:
+                    $ref: '#/components/schemas/minified'
+                  include:
+                    $ref: '#/components/schemas/libraryInclude'
         '404':
           $ref: '#/components/responses/library404'
   /api/libraries/{id}/items:
