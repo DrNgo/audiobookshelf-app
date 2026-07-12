@@ -26,7 +26,7 @@ extension Chapter {
     static func from(dto: Components.Schemas.bookChapter) -> Chapter {
         let ch = Chapter()
         ch.id = dto.id ?? 0
-        ch.start = Double(dto.start ?? 0)   // DTO Int -> Realm Double
+        ch.start = dto.start ?? 0
         ch.end = dto.end ?? 0
         ch.title = dto.title
         return ch
@@ -63,7 +63,7 @@ extension AudioTrack {
 extension Chapter {
     /// Realm Chapter → generated bookChapter DTO (for sending local sessions to the server).
     func toDTO() -> Components.Schemas.bookChapter {
-        Components.Schemas.bookChapter(id: id, start: Int(start), end: end, title: title)
+        Components.Schemas.bookChapter(id: id, start: start, end: end, title: title)
     }
 }
 

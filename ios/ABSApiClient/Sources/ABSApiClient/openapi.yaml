@@ -1882,8 +1882,8 @@ components:
           type: integer
           example: 0
         start:
-          description: When in the book (in seconds) the chapter starts.
-          type: integer
+          description: When in the book (in seconds) the chapter starts. Fractional seconds are common (e.g. 17.228).
+          type: number
           example: 0
         end:
           description: When in the book (in seconds) the chapter ends.
@@ -2381,7 +2381,13 @@ components:
           description: The current time (in seconds) of the playback position.
           example: 1000
         libraryItem:
-          $ref: '#/components/schemas/libraryItemMinified'
+          # Modeled as a freeform object on purpose: the client does not consume the session's
+          # libraryItem (see PlaybackSessionMapping — it is mapped to nil), and the real play
+          # response sends a richer/expanded item than libraryItemMinified, whose strict decode
+          # would fail. Keeping it freeform avoids decode failures for a field we ignore.
+          type: object
+          nullable: true
+          description: The library item associated with the session. Freeform; not consumed by this client.
     playbackReport:
       type: object
       description: A progress heartbeat used to sync an open playback session.

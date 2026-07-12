@@ -151,7 +151,8 @@ extension ABSApiClient {
         refresher: any ABSTokenRefreshing,
         libraryItemId: String,
         episodeId: String?,
-        request: Components.Schemas.playbackSessionRequest
+        request: Components.Schemas.playbackSessionRequest,
+        diagnostics: (@Sendable (String) -> Void)? = nil
     ) async -> Components.Schemas.playbackSession? {
         let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
         do {
@@ -159,16 +160,23 @@ extension ABSApiClient {
                 let output = try await client.playPodcastEpisode(
                     .init(path: .init(id: libraryItemId, episodeId: episodeId), body: .json(request))
                 )
-                guard case let .ok(ok) = output else { return nil }
+                guard case let .ok(ok) = output else {
+                    diagnostics?("playPodcastEpisode non-ok: \(String(describing: output))")
+                    return nil
+                }
                 return try ok.body.json
             } else {
                 let output = try await client.playLibraryItem(
                     .init(path: .init(id: libraryItemId), body: .json(request))
                 )
-                guard case let .ok(ok) = output else { return nil }
+                guard case let .ok(ok) = output else {
+                    diagnostics?("playLibraryItem non-ok: \(String(describing: output))")
+                    return nil
+                }
                 return try ok.body.json
             }
         } catch {
+            diagnostics?("startPlaybackSession error: \(String(describing: error))")
             return nil
         }
     }

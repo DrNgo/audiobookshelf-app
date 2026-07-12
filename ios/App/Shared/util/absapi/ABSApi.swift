@@ -126,16 +126,20 @@ enum ABSApi {
         )
     }
 
-    /// POST /api/items/{id}/play[/{episodeId}] → Realm `PlaybackSession` (with server-connection
-    /// fields set), or nil on failure.
+    /// POST /api/items/{id}/play[/{episodeId}] → the raw playback session DTO, or nil on failure.
     ///
-    /// The generated play response models `libraryItem` as `libraryItemMinified` (no
-    /// `audioFiles[].ino`), so the mapped session's `libraryItem` is left nil. That `ino` is only
-    /// used by AudioPlayer.createAsset for directplay on servers < 2.22.0 and a local-file
-    /// streaming fallback; on servers ≥ 2.22.0 directplay uses `/public/session/{id}/track/{index}`
-    /// and transcode uses the track `contentUrl`, both fully covered by the mapped audioTracks.
-    static func startPlaybackSession(libraryItemId: String, episodeId: String?, forceTranscode: Bool) async -> PlaybackSession? {
-        guard let serverConfig = Store.serverConfig, let serverURL = URL(string: serverConfig.address) else {
+    /// Returns the DTO (not a Realm object) on purpose: the caller maps it to a Realm
+    /// `PlaybackSession` on the MAIN thread, because that object is immediately saved to Realm and
+    /// consumed by the player on the main thread. Building the Realm object graph off-thread and
+    /// then persisting/using it on the main thread is unsafe. (The legacy ApiClient decoded on
+    /// Alamofire's main queue, preserving this invariant.)
+    ///
+    /// The generated play response models `libraryItem` as a freeform object (unused; mapped to
+    /// nil). On servers ≥ 2.22.0 directplay uses `/public/session/{id}/track/{index}` and transcode
+    /// uses the track `contentUrl`, both covered by the mapped audioTracks; the `libraryItem` `ino`
+    /// (only needed for < 2.22.0 directplay + local fallback) is intentionally not carried.
+    static func startPlaybackSessionDTO(libraryItemId: String, episodeId: String?, forceTranscode: Bool) async -> Components.Schemas.playbackSession? {
+        guard let serverURL = ABSClientProvider.serverURL else {
             AbsLogger.error(message: "ABSApi.startPlaybackSession: no server configured")
             return nil
         }
@@ -151,16 +155,13 @@ enum ABSApi {
             refresher: ABSClientProvider.refresher,
             libraryItemId: libraryItemId,
             episodeId: episodeId,
-            request: request
+            request: request,
+            diagnostics: { AbsLogger.error(message: "ABSApi.startPlaybackSession: \($0)") }
         ) else {
             AbsLogger.error(message: "ABSApi.startPlaybackSession: request failed")
             return nil
         }
-        let session = PlaybackSession.from(dto: dto)
-        // Attach the active server connection, exactly as the legacy ApiClient did.
-        session.serverConnectionConfigId = serverConfig.id
-        session.serverAddress = serverConfig.address
-        return session
+        return dto
     }
 
     /// Build the deviceInfoRequest the client sends when starting a session (the server enriches
