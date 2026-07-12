@@ -597,21 +597,14 @@ class ApiClient {
     
     public static func getMediaProgress(libraryItemId: String, episodeId: String?) async -> MediaProgress? {
         AbsLogger.info(message: "getMediaProgress \(libraryItemId) \(episodeId ?? "NIL")")
-        let endpoint = episodeId?.isEmpty ?? true ? "api/me/progress/\(libraryItemId)" : "api/me/progress/\(libraryItemId)/\(episodeId ?? "")"
-        return await withCheckedContinuation { continuation in
-            getResourceWithTokenRefresh(endpoint: endpoint, decodable: MediaProgress.self) { result in
-                continuation.resume(returning: result)
-            }
-        }
+        // Phase 2 migration: served solely by the generated ABSApiClient (no legacy fallback).
+        return await ABSApi.getMediaProgress(libraryItemId: libraryItemId, episodeId: episodeId)
     }
-    
+
     public static func getCurrentUser() async -> User? {
         AbsLogger.info(message: "getCurrentUser")
-        return await withCheckedContinuation { continuation in
-            getResourceWithTokenRefresh(endpoint: "api/me", decodable: User.self) { result in
-                continuation.resume(returning: result)
-            }
-        }
+        // Phase 2 migration: served solely by the generated ABSApiClient (no legacy fallback).
+        return await ABSApi.getCurrentUser()
     }
     
     public static func getLibraryItemWithProgress(libraryItemId: String, episodeId: String?, callback: @escaping (_ param: LibraryItem?) -> Void) {
