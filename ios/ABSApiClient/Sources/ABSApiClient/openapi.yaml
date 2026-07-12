@@ -161,6 +161,56 @@ paths:
           description: The progress was created or updated.
         '401':
           $ref: '#/components/responses/unauthorized401'
+  /api/items/{id}:
+    get:
+      operationId: getLibraryItem
+      tags:
+        - Library Items
+      summary: Get a library item
+      description: >
+        Get a single library item. With `expanded=1` the full media (audioFiles, chapters,
+        podcast episodes, ebook file, etc.) is returned; with `include=progress` the user's
+        media progress is embedded as `userMediaProgress`. The full expanded item is large and
+        already has a well-tested client-side model, so the response is documented here as a
+        freeform object and decoded by the client into its own type.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the library item.
+          schema:
+            $ref: '#/components/schemas/libraryItemId'
+        - name: expanded
+          in: query
+          required: false
+          description: When "1", returns the expanded library item (full media).
+          schema:
+            type: string
+          example: '1'
+        - name: include
+          in: query
+          required: false
+          description: Comma-separated extra data to include (e.g. "progress").
+          schema:
+            type: string
+          example: progress
+        - name: episodeId
+          in: query
+          required: false
+          description: When including progress for a podcast, the episode to get progress for.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The library item (expanded and/or with progress, per the query parameters).
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/unauthorized401'
+        '404':
+          description: No library item with the given ID exists.
   /api/items/{id}/play:
     parameters:
       - name: id
