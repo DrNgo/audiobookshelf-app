@@ -57,4 +57,71 @@ enum ABSApi {
         }
         return MediaProgress.from(dto: dto)
     }
+
+    // MARK: - Writes (Phase 3)
+
+    /// PATCH /api/me/progress/{id}[/{ep}]. The generic payload (e.g. ["isFinished": true]) is
+    /// re-encoded into the typed mediaProgressUpdate DTO. Returns true on success.
+    static func updateMediaProgress<T: Encodable>(libraryItemId: String, episodeId: String?, payload: T) async -> Bool {
+        guard let serverURL = ABSClientProvider.serverURL else { return false }
+        let update: Components.Schemas.mediaProgressUpdate
+        do {
+            let data = try JSONEncoder().encode(payload)
+            update = try JSONDecoder().decode(Components.Schemas.mediaProgressUpdate.self, from: data)
+        } catch {
+            AbsLogger.error(message: "ABSApi.updateMediaProgress: failed to build update DTO: \(error)")
+            return false
+        }
+        return await ABSApiClient.updateMediaProgress(
+            serverURL: serverURL,
+            accessToken: ABSClientProvider.accessToken,
+            refresher: ABSClientProvider.refresher,
+            libraryItemId: libraryItemId,
+            episodeId: episodeId,
+            update: update
+        )
+    }
+
+    /// POST /api/session/{sessionId}/sync — progress heartbeat for an open server session.
+    static func reportPlaybackProgress(report: PlaybackReport, sessionId: String) async -> Bool {
+        guard let serverURL = ABSClientProvider.serverURL else { return false }
+        let dto = Components.Schemas.playbackReport(
+            currentTime: report.currentTime,
+            duration: report.duration,
+            timeListened: report.timeListened
+        )
+        return await ABSApiClient.syncPlaybackSession(
+            serverURL: serverURL,
+            accessToken: ABSClientProvider.accessToken,
+            refresher: ABSClientProvider.refresher,
+            sessionId: sessionId,
+            report: dto
+        )
+    }
+
+    /// POST /api/session/local — sync a single locally-recorded session. `session` must be frozen.
+    static func reportLocalPlaybackProgress(_ session: PlaybackSession) async -> Bool {
+        guard let serverURL = ABSClientProvider.serverURL else { return false }
+        return await ABSApiClient.syncLocalPlaybackSession(
+            serverURL: serverURL,
+            accessToken: ABSClientProvider.accessToken,
+            refresher: ABSClientProvider.refresher,
+            session: session.toDTO()
+        )
+    }
+
+    /// POST /api/session/local-all — bulk-sync offline sessions. Sessions must be frozen.
+    static func reportAllLocalPlaybackSessions(_ sessions: [PlaybackSession]) async -> Bool {
+        guard let serverURL = ABSClientProvider.serverURL else { return false }
+        let body = Components.Schemas.localPlaybackSessionSyncAll(
+            sessions: sessions.map { $0.toDTO() },
+            deviceInfo: PlaybackSession.deviceInfoDTO(from: sessions.first?.deviceInfo)
+        )
+        return await ABSApiClient.syncAllLocalPlaybackSessions(
+            serverURL: serverURL,
+            accessToken: ABSClientProvider.accessToken,
+            refresher: ABSClientProvider.refresher,
+            body: body
+        )
+    }
 }

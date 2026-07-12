@@ -60,6 +60,80 @@ extension AudioTrack {
     }
 }
 
+extension Chapter {
+    /// Realm Chapter → generated bookChapter DTO (for sending local sessions to the server).
+    func toDTO() -> Components.Schemas.bookChapter {
+        Components.Schemas.bookChapter(id: id, start: Int(start), end: end, title: title)
+    }
+}
+
+extension FileMetadata {
+    func toDTO() -> Components.Schemas.fileMetadata {
+        Components.Schemas.fileMetadata(
+            filename: filename,
+            ext: ext,
+            path: path,
+            relPath: relPath,
+            size: Int(size)   // Realm Double -> DTO Int
+        )
+    }
+}
+
+extension AudioTrack {
+    func toDTO() -> Components.Schemas.AudioTrack {
+        Components.Schemas.AudioTrack(
+            index: index,
+            startOffset: startOffset.map { Float($0) },   // Realm Double -> DTO Float
+            duration: Float(duration),
+            title: title,
+            contentUrl: contentUrl,
+            mimeType: mimeType,
+            metadata: metadata?.toDTO()
+        )
+    }
+}
+
+extension PlaybackSession {
+    /// Build a generated deviceInfo DTO from the app's `[String: String?]` device-info dictionary
+    /// (deviceId/manufacturer/model/clientVersion). Server-enriched fields are left nil.
+    static func deviceInfoDTO(from dict: [String: String?]?) -> Components.Schemas.deviceInfo? {
+        guard let dict = dict else { return nil }
+        return Components.Schemas.deviceInfo(
+            deviceId: dict["deviceId"] ?? nil,
+            clientVersion: dict["clientVersion"] ?? nil,
+            manufacturer: dict["manufacturer"] ?? nil,
+            model: dict["model"] ?? nil
+        )
+    }
+
+    /// Realm PlaybackSession → generated playbackSession DTO (for syncLocalPlaybackSession /
+    /// syncAllLocalPlaybackSessions). Maps scalars + chapters + audioTracks + deviceInfo; defers
+    /// mediaMetadata (freeform in the spec) and libraryItem (the server reconstructs these from
+    /// libraryItemId, which is included).
+    func toDTO() -> Components.Schemas.playbackSession {
+        Components.Schemas.playbackSession(
+            id: id,
+            userId: userId,
+            libraryItemId: libraryItemId,
+            episodeId: episodeId,
+            mediaType: Components.Schemas.mediaType(rawValue: mediaType),
+            chapters: chapters.map { $0.toDTO() },
+            displayTitle: displayTitle,
+            displayAuthor: displayAuthor,
+            coverPath: coverPath,
+            duration: duration,
+            playMethod: Components.Schemas.playMethod(rawValue: playMethod),
+            mediaPlayer: mediaPlayer,
+            deviceInfo: PlaybackSession.deviceInfoDTO(from: deviceInfo),
+            startedAt: startedAt.map { Int($0) },   // Realm Double -> DTO Int (ms)
+            updatedAt: updatedAt.map { Int($0) },
+            timeListening: timeListening,
+            audioTracks: audioTracks.map { $0.toDTO() },
+            currentTime: currentTime
+        )
+    }
+}
+
 extension PlaybackSession {
     /// Build an *unmanaged* Realm PlaybackSession from the generated DTO. Server-connection
     /// fields are left to the caller. The result must be persisted inside a write transaction.
