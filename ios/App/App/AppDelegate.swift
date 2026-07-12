@@ -79,6 +79,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         WidgetSync.sync()
         // Listen for transport commands from the widget's control buttons.
         WidgetCommandReceiver.shared.start()
+        // A cold launch from the widget's resume link arrives here; run it once the app is active.
+        if let url = launchOptions?[.url] as? URL { WidgetDeepLink.noteIfResume(url) }
 
         return true
     }
@@ -102,6 +104,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
         AbsLogger.info(message: "Audiobookself is now active")
+        // Run a widget resume that arrived during a cold launch or while backgrounded, now that
+        // Realm/Store/the player are ready.
+        WidgetDeepLink.performPendingResume()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
@@ -111,7 +116,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         // Widget tap-to-resume deep link is handled natively; everything else goes to Capacitor.
-        if WidgetDeepLink.handleResume(url) { return true }
+        if WidgetDeepLink.noteIfResume(url) {
+            // If the app is already running, resume now; otherwise didBecomeActive will.
+            if app.applicationState == .active { WidgetDeepLink.performPendingResume() }
+            return true
+        }
         // Called when the app was launched with a url. Feel free to add additional processing here,
         // but if you want the App API to support tracking app url opens, make sure to keep this call
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)

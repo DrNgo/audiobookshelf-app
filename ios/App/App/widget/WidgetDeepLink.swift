@@ -2,25 +2,37 @@
 //  WidgetDeepLink.swift
 //  App
 //
-//  Handles the widget's tap-to-resume deep link (audiobookshelf://resume) natively, before the URL
-//  is forwarded to the Capacitor WebView.
+//  Handles the widget's tap-to-resume deep link (audiobookshelf://resume). The resume is DEFERRED
+//  to applicationDidBecomeActive: on a cold launch the URL arrives while Realm/Store/the player are
+//  still initializing, and resuming that early builds a degenerate session (position 0, no tracks)
+//  that then fails to play. Running it once the app is active resumes from the saved position.
 //
 
 import Foundation
+import UIKit
 
 enum WidgetDeepLink {
-    /// If `url` is the widget resume link, start playback of the most-recent in-progress book and
-    /// return true (handled). Otherwise return false so the caller forwards the URL onward.
-    static func handleResume(_ url: URL) -> Bool {
+    private static var resumePending = false
+
+    /// True if `url` is the widget resume link. Marks the resume pending (performed on next active).
+    @discardableResult
+    static func noteIfResume(_ url: URL) -> Bool {
         guard url.scheme == "audiobookshelf", url.host == "resume" else { return false }
+        resumePending = true
+        return true
+    }
+
+    /// Run a pending resume, if any. Call once the app is active (Realm/Store/player are ready).
+    static func performPendingResume() {
+        guard resumePending else { return }
+        resumePending = false
         Task { @MainActor in
-            // If a book is already loaded (e.g. paused), just resume it in place — don't restart it.
+            // Already loaded (e.g. suspended-with-session): just resume in place, don't restart.
             if PlayerHandler.getPlaybackSession() != nil {
                 PlayerHandler.paused = false
             } else if let item = (await BrowseApi.continueListening()).first {
                 BrowsePlaybackStarter.play(item) {}
             }
         }
-        return true
     }
 }
