@@ -23,15 +23,16 @@ struct AudiobookEntry: TimelineEntry {
     let cover: UIImage?
     let currentTime: Double
     let duration: Double
+    let isPlaying: Bool
     let hasContent: Bool
 
     var progress: Double { duration > 0 ? min(max(currentTime / duration, 0), 1) : 0 }
 
     static func empty(_ message: String) -> AudiobookEntry {
-        AudiobookEntry(date: Date(), title: message, author: nil, cover: nil, currentTime: 0, duration: 0, hasContent: false)
+        AudiobookEntry(date: Date(), title: message, author: nil, cover: nil, currentTime: 0, duration: 0, isPlaying: false, hasContent: false)
     }
     static let placeholder = AudiobookEntry(date: Date(), title: "Your Audiobook", author: "Author",
-                                            cover: nil, currentTime: 1800, duration: 7200, hasContent: true)
+                                            cover: nil, currentTime: 1800, duration: 7200, isPlaying: false, hasContent: true)
 }
 
 // MARK: - Timeline
@@ -67,6 +68,7 @@ struct AudiobookProvider: TimelineProvider {
             cover: cover,
             currentTime: progress?.currentTime ?? 0,
             duration: progress?.duration ?? item.media?.duration ?? 0,
+            isPlaying: WidgetSharedCredentials.isPlaying,
             hasContent: true
         )
     }
@@ -244,7 +246,9 @@ struct AudiobookshelfWidgetEntryView: View {
         if #available(iOS 17.0, *) {
             HStack(spacing: 26) {
                 Button(intent: WidgetSkipBackwardIntent()) { Image(systemName: "gobackward.10") }
-                Button(intent: WidgetPlayPauseIntent()) { Image(systemName: "playpause.fill").font(.system(size: 22)) }
+                Button(intent: WidgetPlayPauseIntent()) {
+                    Image(systemName: entry.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 22))
+                }
                 Button(intent: WidgetSkipForwardIntent()) { Image(systemName: "goforward.10") }
             }
             .font(.system(size: 17, weight: .semibold))
@@ -269,13 +273,19 @@ struct AudiobookshelfWidgetEntryView: View {
     }
 }
 
-/// Cover-color background on iOS 17+; plain on 16.
+/// Cover-color background with a subtle top-to-bottom vignette for depth (so light covers still read
+/// as an immersive player card, not a flat swatch). iOS 17+ uses containerBackground; plain on 16.
 private extension View {
     @ViewBuilder func widgetBackground(_ color: Color) -> some View {
+        let bg = ZStack {
+            color
+            LinearGradient(colors: [.white.opacity(0.06), .clear, .black.opacity(0.22)],
+                           startPoint: .top, endPoint: .bottom)
+        }
         if #available(iOS 17.0, *) {
-            self.padding(14).containerBackground(color, for: .widget)
+            self.padding(14).containerBackground(for: .widget) { bg }
         } else {
-            self.padding(14).background(color)
+            self.padding(14).background(bg)
         }
     }
 }

@@ -40,6 +40,7 @@ public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
 
     override public func load() {
         NotificationCenter.default.addObserver(self, selector: #selector(sendMetadata), name: NSNotification.Name(PlayerEvents.update.rawValue), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(sendCurrentPlaybackSession), name: NSNotification.Name(PlayerEvents.sessionStarted.rawValue), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(sendPlaybackClosedEvent), name: NSNotification.Name(PlayerEvents.closed.rawValue), object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(sendMetadata), name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(sendMetadata), name: UIApplication.willEnterForegroundNotification, object: nil)
@@ -190,6 +191,7 @@ public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func sendMetadata() {
+        WidgetSync.updatePlayState(isPlaying: !PlayerHandler.paused)
         self.notifyListeners("onPlayingUpdate", data: [ "value": !PlayerHandler.paused ])
         if let metadata = try? PlayerHandler.getMetdata()?.asDictionary() {
             self.notifyListeners("onMetadata", data: metadata)
@@ -294,6 +296,18 @@ public class AbsAudioPlayer: CAPPlugin, CAPBridgedPlugin {
             ])
         }
 
+    }
+
+    /// Playback was started natively (CarPlay / widget), bypassing `startPlaybackSession`. Push the
+    /// active session to the WebView so its player UI reflects what's playing — mirrors the notify
+    /// sequence in `startPlaybackSession`.
+    @objc func sendCurrentPlaybackSession() {
+        guard let session = PlayerHandler.getPlaybackSession(), let libraryItemId = session.libraryItemId else { return }
+        self.sendPrepareMetadataEvent(itemId: libraryItemId, playWhenReady: true)
+        if let dict = try? session.asDictionary() {
+            self.sendPlaybackSession(session: dict)
+        }
+        self.sendMetadata()
     }
 
     @objc func sendPrepareMetadataEvent(itemId: String, playWhenReady: Bool) {

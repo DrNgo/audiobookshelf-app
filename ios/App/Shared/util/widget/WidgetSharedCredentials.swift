@@ -26,4 +26,9 @@ enum WidgetSharedCredentials {
               let token = defaults?.string(forKey: tokenKey), !token.isEmpty else { return nil }
         return (url, token)
     }
+
+    // Live play/pause state, so the widget's play/pause button can show the right glyph.
+    private static let isPlayingKey = "widget.isPlaying"
+    static var isPlaying: Bool { UserDefaults(suiteName: appGroup)?.bool(forKey: isPlayingKey) ?? false }
+    static func setIsPlaying(_ playing: Bool) { UserDefaults(suiteName: appGroup)?.set(playing, forKey: isPlayingKey) }
 }

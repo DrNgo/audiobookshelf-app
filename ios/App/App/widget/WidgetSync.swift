@@ -19,4 +19,14 @@ enum WidgetSync {
             WidgetCenter.shared.reloadAllTimelines()
         }
     }
+
+    /// Reflect the live play/pause state to the widget — only reloads when it actually changes, to
+    /// avoid refetching the timeline on every player tick.
+    static func updatePlayState(isPlaying: Bool) {
+        guard WidgetSharedCredentials.isPlaying != isPlaying else { return }
+        WidgetSharedCredentials.setIsPlaying(isPlaying)
+        if #available(iOS 14.0, *) {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
 }

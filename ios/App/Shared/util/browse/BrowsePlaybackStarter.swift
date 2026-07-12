@@ -28,6 +28,7 @@ enum BrowsePlaybackStarter {
             do {
                 try session.save()
                 PlayerHandler.startPlayback(sessionId: session.id, playWhenReady: true, playbackRate: rate)
+                notifyWebLayer()
                 onStarted()
             } catch {
                 AbsLogger.error(message: "CarPlay: failed to start local session: \(error)")
@@ -42,11 +43,20 @@ enum BrowsePlaybackStarter {
                 do {
                     try session.save()
                     PlayerHandler.startPlayback(sessionId: session.id, playWhenReady: true, playbackRate: rate)
+                    notifyWebLayer()
                     onStarted()
                 } catch {
                     AbsLogger.error(message: "CarPlay: failed to start server session: \(error)")
                 }
             }
         }
+    }
+
+    /// Playback started outside the WebView (CarPlay / widget). Tell the app's audio plugin to push
+    /// the session to the WebView so its player UI reflects what's playing — the plugin's own start
+    /// path does this, but we bypass it here.
+    @MainActor
+    private static func notifyWebLayer() {
+        NotificationCenter.default.post(name: NSNotification.Name(PlayerEvents.sessionStarted.rawValue), object: nil)
     }
 }
