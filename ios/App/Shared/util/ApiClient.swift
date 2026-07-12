@@ -493,13 +493,23 @@ class ApiClient {
     }
     
     public static func getLibraryItemWithProgress(libraryItemId: String, episodeId: String?, callback: @escaping (_ param: LibraryItem?) -> Void) {
-        var endpoint = "api/items/\(libraryItemId)?expanded=1&include=progress"
-        if episodeId != nil {
-            endpoint += "&episodeId=\(episodeId!)"
-        }
-
-        getResourceWithTokenRefresh(endpoint: endpoint, decodable: LibraryItem.self) { obj in
-            callback(obj)
+        // Phase 5 migration: fetched via the generated client as a freeform object, then decoded
+        // into the Realm LibraryItem with its own lenient decoder ON THE MAIN THREAD (Realm object,
+        // immediately persisted/used by the downloader on main).
+        Task {
+            let data = await ABSApi.getLibraryItemData(libraryItemId: libraryItemId, episodeId: episodeId)
+            await MainActor.run {
+                guard let data = data else {
+                    callback(nil)
+                    return
+                }
+                do {
+                    callback(try JSONDecoder().decode(LibraryItem.self, from: data))
+                } catch {
+                    AbsLogger.error(message: "getLibraryItemWithProgress: decode failed: \(error)")
+                    callback(nil)
+                }
+            }
         }
     }
     

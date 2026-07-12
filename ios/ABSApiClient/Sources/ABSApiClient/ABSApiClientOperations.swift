@@ -59,6 +59,34 @@ extension ABSApiClient {
         }
     }
 
+    /// GET /api/items/{id}?expanded=1&include=progress[&episodeId=…] — returns the raw JSON body of
+    /// the (freeform) library item so the app can decode it with its own well-tested lenient model.
+    /// The expanded item is a large tree; modeling it as typed DTOs here would be brittle, so the op
+    /// exists only to provide the authenticated + refresh-aware request. Returns nil on failure.
+    public static func fetchLibraryItemData(
+        serverURL: URL,
+        accessToken: @escaping @Sendable () -> String?,
+        refresher: any ABSTokenRefreshing,
+        libraryItemId: String,
+        episodeId: String?
+    ) async -> Data? {
+        let client = makeRefreshAwareClient(serverURL: serverURL, accessToken: accessToken, refresher: refresher)
+        do {
+            let output = try await client.getLibraryItem(
+                .init(
+                    path: .init(id: libraryItemId),
+                    query: .init(expanded: "1", include: "progress", episodeId: episodeId)
+                )
+            )
+            guard case let .ok(ok) = output else { return nil }
+            // Re-serialize the freeform object back to JSON for the app's decoder. This preserves
+            // the exact values (including numbers-as-strings the lenient model still tolerates).
+            return try JSONEncoder().encode(ok.body.json)
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Writes (Phase 3)
 
     /// PATCH /api/me/progress/{libraryItemId}[/{episodeId}] with a partial progress update.

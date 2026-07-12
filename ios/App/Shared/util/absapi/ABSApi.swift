@@ -59,6 +59,23 @@ enum ABSApi {
         return MediaProgress.from(dto: dto)
     }
 
+    /// GET /api/items/{id}?expanded=1&include=progress — returns the raw JSON body, which the caller
+    /// decodes into a Realm `LibraryItem` on the main thread (Realm object) using the model's own
+    /// lenient decoder. Returns nil on failure.
+    static func getLibraryItemData(libraryItemId: String, episodeId: String?) async -> Data? {
+        guard let serverURL = ABSClientProvider.serverURL else {
+            AbsLogger.error(message: "ABSApi.getLibraryItem: no server configured")
+            return nil
+        }
+        return await ABSApiClient.fetchLibraryItemData(
+            serverURL: serverURL,
+            accessToken: ABSClientProvider.accessToken,
+            refresher: ABSClientProvider.refresher,
+            libraryItemId: libraryItemId,
+            episodeId: episodeId
+        )
+    }
+
     // MARK: - Writes (Phase 3)
 
     /// PATCH /api/me/progress/{id}[/{ep}]. The generic payload (e.g. ["isFinished": true]) is
