@@ -84,6 +84,15 @@ extension ABSApiClient {
         }
     }
 
+    /// GET /api/libraries — raw JSON `{ libraries: [...] }`, for the app to pick a library (e.g. the
+    /// first book library for a browse shelf). Nil on failure.
+    public static func fetchLibrariesData(config: ABSClientConfig) async -> Data? {
+        await perform(config) { client in
+            guard case let .ok(ok) = try await client.getLibraries() else { return nil }
+            return try JSONEncoder().encode(ok.body.json)
+        }
+    }
+
     // MARK: - Writes
 
     /// PATCH /api/me/progress/{libraryItemId}[/{episodeId}] with a partial progress update.

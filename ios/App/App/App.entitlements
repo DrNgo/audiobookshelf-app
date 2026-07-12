@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  CarPlay audio-app entitlement. REQUIRES Apple approval (developer.apple.com CarPlay
+	  request form) and must be added to the provisioning profile before it can be used.
+
+	  This file is intentionally NOT yet wired into the target: the CODE_SIGN_ENTITLEMENTS
+	  build setting is left unset so device builds keep signing normally. Once Apple grants
+	  the entitlement and it is added to the profile, set:
+	      CODE_SIGN_ENTITLEMENTS = App/App.entitlements
+	  on the Audiobookshelf target to activate the CarPlay scene.
+	-->
+	<key>com.apple.developer.carplay-audio</key>
+	<true/>
+</dict>
+</plist>

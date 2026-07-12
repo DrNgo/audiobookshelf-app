@@ -32,4 +32,15 @@ enum CarPlayApi {
             .filter { $0.mediaType == "book" }
             .map { CarPlayListItem.from(local: $0) }
     }
+
+    /// The id of the user's first book library — used to scope the "Recently Added" shelf.
+    /// Nil if there is no book library or the request fails.
+    static func firstBookLibraryId() async -> String? {
+        guard let config = ABSClientProvider.config else { return nil }
+        guard let data = await ABSApiClient.fetchLibrariesData(config: config) else { return nil }
+        struct Library: Decodable { let id: String?; let mediaType: String? }
+        struct Response: Decodable { let libraries: [Library]? }
+        guard let resp = try? JSONDecoder().decode(Response.self, from: data) else { return nil }
+        return resp.libraries?.first(where: { $0.mediaType == "book" })?.id
+    }
 }
