@@ -10,6 +10,7 @@
 
 <script>
 import { AbsAudioPlayer, AbsLogger } from '@/plugins/capacitor'
+import { App } from '@capacitor/app'
 import { Dialog } from '@capacitor/dialog'
 import CellularPermissionHelpers from '@/mixins/cellularPermissionHelpers'
 
@@ -37,7 +38,8 @@ export default {
       sleepInterval: null,
       currentEndOfChapterTime: 0,
       serverLibraryItemId: null,
-      serverEpisodeId: null
+      serverEpisodeId: null,
+      widgetResumeStarted: false
     }
   },
   mixins: [CellularPermissionHelpers],
@@ -280,6 +282,83 @@ export default {
         this.$refs.audioPlayer.pause()
       }
     },
+    /**
+     * Handle the home-screen widget's tap-to-resume deep link (`audiobookshelf://resume`).
+     *
+     * Routed through the web — rather than started natively — so it flows through the app's own mature
+     * play flow (prepareLibraryItem), which resumes from the saved position with the correct duration
+     * and no error. A cold launch reaches here via `App.getLaunchUrl()` (checked on mount); a warm
+     * launch reaches here via the `'url-open'` event (Capacitor `appUrlOpen`). The link can arrive via
+     * both, so the cold path is guarded by `widgetResumeStarted` and re-checks after each await.
+     */
+    async onUrlOpen(url) {
+      if (!url || !url.startsWith('audiobookshelf://resume')) return
+      await AbsLogger.info({ tag: 'AudioPlayerContainer', message: 'onUrlOpen: widget resume link received' })
+
+      // Warm launch: a book is already loaded in the player — just ensure it's playing rather than
+      // restarting it (avoid interrupting/rewinding the current book).
+      if (this.currentPlaybackSession) {
+        if (this.$refs.audioPlayer && !this.$refs.audioPlayer.isPlaying) {
+          this.$refs.audioPlayer.play()
+        }
+        return
+      }
+
+      // Cold launch: nothing loaded yet. Resume the most-recent in-progress item through the normal
+      // play flow — but only once per launch (the link can arrive via both getLaunchUrl and appUrlOpen).
+      if (this.widgetResumeStarted) return
+
+      const ready = await this.waitForServerReady()
+      if (!ready) {
+        console.warn('[AudioPlayerContainer] onUrlOpen: not connected, cannot resume widget link')
+        return
+      }
+      // Re-check after the await: a concurrent trigger may have already started, or the player may
+      // have loaded a session in the meantime.
+      if (this.widgetResumeStarted || this.currentPlaybackSession) return
+
+      try {
+        const data = await this.$nativeHttp.get('/api/me/items-in-progress?limit=1')
+        if (this.widgetResumeStarted || this.currentPlaybackSession) return
+        const item = data?.libraryItems?.[0]
+        if (!item?.id) {
+          console.warn('[AudioPlayerContainer] onUrlOpen: no in-progress item to resume')
+          return
+        }
+        // Set the guard synchronously (no await before the emit) so a concurrent trigger can't also emit.
+        this.widgetResumeStarted = true
+        const libraryItemId = item.id
+        const episodeId = item.recentEpisode?.id
+        await AbsLogger.info({ tag: 'AudioPlayerContainer', message: `onUrlOpen: resuming ${libraryItemId}${episodeId ? ` episode ${episodeId}` : ''}` })
+        this.$eventBus.$emit('play-item', { libraryItemId, episodeId })
+      } catch (error) {
+        console.error('[AudioPlayerContainer] onUrlOpen: failed to fetch in-progress item', error)
+      }
+    },
+    /**
+     * On a cold launch a custom-scheme deep link (the widget's audiobookshelf://resume) is delivered
+     * only via the launch URL, not the appUrlOpen event, so check it explicitly once the player is ready.
+     */
+    async checkLaunchUrl() {
+      try {
+        const { url } = await App.getLaunchUrl()
+        if (url) this.onUrlOpen(url)
+      } catch (error) {
+        console.error('[AudioPlayerContainer] checkLaunchUrl failed', error)
+      }
+    },
+    /**
+     * Wait (up to `timeoutMs`) for the server connection to be usable, so a resume link that arrives
+     * during a cold launch doesn't fire before the user/token/network are ready.
+     */
+    async waitForServerReady(timeoutMs = 10000) {
+      const start = Date.now()
+      while (Date.now() - start < timeoutMs) {
+        if (this.$store.state.user.user && this.$store.state.networkConnected) return true
+        await new Promise((resolve) => setTimeout(resolve, 250))
+      }
+      return !!(this.$store.state.user.user && this.$store.state.networkConnected)
+    },
     onLocalMediaProgressUpdate(localMediaProgress) {
       console.log('Got local media progress update', localMediaProgress.progress, JSON.stringify(localMediaProgress))
       this.$store.commit('globals/updateLocalMediaProgress', localMediaProgress)
@@ -453,6 +532,10 @@ export default {
     this.$eventBus.$on('playback-time-update', this.playbackTimeUpdate)
     this.$eventBus.$on('device-focus-update', this.deviceFocused)
     this.$eventBus.$on('socket-reconnected', this.socketReconnected)
+    this.$eventBus.$on('url-open', this.onUrlOpen)
+
+    // Handle a cold-launch widget resume deep link (delivered via the launch URL, not appUrlOpen).
+    this.checkLaunchUrl()
   },
   beforeDestroy() {
     this.onLocalMediaProgressUpdateListener?.remove()
@@ -469,6 +552,7 @@ export default {
     this.$eventBus.$off('playback-time-update', this.playbackTimeUpdate)
     this.$eventBus.$off('device-focus-update', this.deviceFocused)
     this.$eventBus.$off('socket-reconnected', this.socketReconnected)
+    this.$eventBus.$off('url-open', this.onUrlOpen)
   }
 }
 </script>

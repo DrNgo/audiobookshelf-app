@@ -28,7 +28,6 @@
 		3AFCB5E827EA240D00ECCC05 /* NowPlayingInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AFCB5E727EA240D00ECCC05 /* NowPlayingInfo.swift */; };
 		3B5AA0F6C03FBAD4FDDA2507 /* CarPlayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9084D29DAAE715B5071C3123 /* CarPlayManager.swift */; };
 		46D07243DC7DB0F2FA862498 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 227FDEA5A7124D6264E47D88 /* Foundation.framework */; };
-		4CADF5FBCAB53ED8C1B523F0 /* WidgetDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = F44E0A58DAD67C89B5E01C64 /* WidgetDeepLink.swift */; };
 		4D66B954282EE87C008272D4 /* AbsDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D66B953282EE87C008272D4 /* AbsDownloader.swift */; };
 		4D66B958282EEA14008272D4 /* AbsFileSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D66B957282EEA14008272D4 /* AbsFileSystem.swift */; };
 		4D91EEC62A40F28D004807ED /* EBookFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D91EEC52A40F28D004807ED /* EBookFile.swift */; };
@@ -223,7 +222,6 @@
 		EACB38132BCCA1410060DA4A /* LegacyAudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LegacyAudioPlayerRateManager.swift; sourceTree = "<group>"; };
 		EACB38152BCCA1500060DA4A /* DefaultedAudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DefaultedAudioPlayerRateManager.swift; sourceTree = "<group>"; };
 		F15C738FE66AA97A69722BA5 /* WidgetPlaybackCommand.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetPlaybackCommand.swift; path = Shared/util/widget/WidgetPlaybackCommand.swift; sourceTree = "<group>"; };
-		F44E0A58DAD67C89B5E01C64 /* WidgetDeepLink.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetDeepLink.swift; path = App/widget/WidgetDeepLink.swift; sourceTree = "<group>"; };
 		FCD782D68ADBCDC7149506F9 /* AudiobookIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AudiobookIntents.swift; path = App/shortcuts/AudiobookIntents.swift; sourceTree = "<group>"; };
 		FF2E2D6EFA283B23454B5312 /* ABSApi.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ABSApi.swift; path = Shared/util/absapi/ABSApi.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -386,7 +384,6 @@
 				3CC7ACC5DE0A1BE002E4A2D9 /* AudiobookshelfWidget */,
 				5BFC64D760CA6013CB127B55 /* WidgetSharedCredentials.swift */,
 				AF93D69239CB82EA485F45CF /* WidgetSync.swift */,
-				F44E0A58DAD67C89B5E01C64 /* WidgetDeepLink.swift */,
 				6F8E0E9C70DFEF087FEC3BAD /* App.entitlements */,
 				5AA65F0ECB3865F4DA06469E /* AudiobookshelfWidget.entitlements */,
 				F15C738FE66AA97A69722BA5 /* WidgetPlaybackCommand.swift */,
@@ -795,7 +792,6 @@
 				F0259D05FFA5C35BD0B484A9 /* AudiobookIntents.swift in Sources */,
 				68B726C6EFB5A42F84B7E7AE /* WidgetSharedCredentials.swift in Sources */,
 				CD1822EE4981C11BD2CA33EF /* WidgetSync.swift in Sources */,
-				4CADF5FBCAB53ED8C1B523F0 /* WidgetDeepLink.swift in Sources */,
 				59BED844AF60E7072FCC64BE /* WidgetPlaybackCommand.swift in Sources */,
 				F14B2AA1273A8D87B6DB202F /* WidgetCommandReceiver.swift in Sources */,
 			);
