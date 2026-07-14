@@ -7,10 +7,12 @@
 	  can read the current server URL + access token the app writes here. Self-service —
 	  automatic signing provisions it, so device builds are unaffected.
 
-	  NOTE: the CarPlay-audio entitlement is intentionally NOT in this (now wired) file, because
-	  it needs Apple approval + a matching profile and would break device signing until granted.
-	  Add `com.apple.developer.carplay-audio = true` here once Apple grants it.
+	  CarPlay-audio (com.apple.developer.carplay-audio) was granted by Apple (2026-07) and is
+	  enabled below. Device/TestFlight builds additionally need the entitlement in the provisioning
+	  profile (handled in the fork's fastlane automation); otherwise signing fails.
 	-->
+	<key>com.apple.developer.carplay-audio</key>
+	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.com.audiobookshelf.app</string>
