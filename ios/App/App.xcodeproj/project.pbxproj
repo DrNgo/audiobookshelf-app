@@ -42,6 +42,7 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		56763B7F5D013E443327F5BF /* BrowseSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB08EAD34FFAD72481CDE50F /* BrowseSection.swift */; };
 		59BED844AF60E7072FCC64BE /* WidgetPlaybackCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = F15C738FE66AA97A69722BA5 /* WidgetPlaybackCommand.swift */; };
 		5A87A55D5BFAD8F99928B7A8 /* AudiobookshelfWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51EEA93F06CDF784E79CF126 /* AudiobookshelfWidget.swift */; };
 		5ABB86F61530CF350A9943EE /* ABSApiClient in Frameworks */ = {isa = PBXBuildFile; productRef = 50591D8B6EB610D406BBB081 /* ABSApiClient */; };
@@ -95,6 +96,7 @@
 		EACB38162BCCA1500060DA4A /* DefaultedAudioPlayerRateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EACB38152BCCA1500060DA4A /* DefaultedAudioPlayerRateManager.swift */; };
 		F0259D05FFA5C35BD0B484A9 /* AudiobookIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD782D68ADBCDC7149506F9 /* AudiobookIntents.swift */; };
 		F14B2AA1273A8D87B6DB202F /* WidgetCommandReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CE94268991F6119E32551AC /* WidgetCommandReceiver.swift */; };
+		F99A7DC729EC057FBEE18152 /* BrowseSectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34CE56021B80E95679C493A7 /* BrowseSectionTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -138,6 +140,7 @@
 		2948E135A93F21D1C991A7C1 /* SingleFlight.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SingleFlight.swift; path = Shared/util/absapi/SingleFlight.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		2FD2A93810100A769592643B /* PlaybackSessionMapping.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PlaybackSessionMapping.swift; path = Shared/util/absapi/PlaybackSessionMapping.swift; sourceTree = "<group>"; };
+		34CE56021B80E95679C493A7 /* BrowseSectionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowseSectionTests.swift; path = AudiobookshelfUnitTests/Shared/util/browse/BrowseSectionTests.swift; sourceTree = "<group>"; };
 		3A200C1427D64D7E00CBF02E /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
 		3A90295E280968E700E1D427 /* PlaybackReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackReport.swift; sourceTree = "<group>"; };
 		3AB34052280829BF0039308B /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
@@ -188,6 +191,7 @@
 		BE96D57E131924D520D57057 /* Pods-Audiobookshelf.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.debug.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.debug.xcconfig"; sourceTree = "<group>"; };
 		CD6D77497B12DCD4B351665D /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CarPlaySceneDelegate.swift; path = App/carplay/CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
 		D2F7F575384A63F1C47DE984 /* Pods-Audiobookshelf.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.release.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.release.xcconfig"; sourceTree = "<group>"; };
+		DB08EAD34FFAD72481CDE50F /* BrowseSection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowseSection.swift; path = Shared/util/browse/BrowseSection.swift; sourceTree = "<group>"; };
 		E9D5504528AC1A3900C746DD /* LibraryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryItem.swift; sourceTree = "<group>"; };
 		E9D5504728AC1A7A00C746DD /* MediaType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaType.swift; sourceTree = "<group>"; };
 		E9D5504928AC1AA600C746DD /* Metadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Metadata.swift; sourceTree = "<group>"; };
@@ -388,6 +392,8 @@
 				5AA65F0ECB3865F4DA06469E /* AudiobookshelfWidget.entitlements */,
 				F15C738FE66AA97A69722BA5 /* WidgetPlaybackCommand.swift */,
 				6CE94268991F6119E32551AC /* WidgetCommandReceiver.swift */,
+				DB08EAD34FFAD72481CDE50F /* BrowseSection.swift */,
+				34CE56021B80E95679C493A7 /* BrowseSectionTests.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -587,7 +593,6 @@
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1240;
-						ProvisioningStyle = Automatic;
 					};
 					E9E8813928DA5DE500D750C1 = {
 						CreatedOnToolsVersion = 14.0;
@@ -794,6 +799,7 @@
 				CD1822EE4981C11BD2CA33EF /* WidgetSync.swift in Sources */,
 				59BED844AF60E7072FCC64BE /* WidgetPlaybackCommand.swift in Sources */,
 				F14B2AA1273A8D87B6DB202F /* WidgetCommandReceiver.swift in Sources */,
+				56763B7F5D013E443327F5BF /* BrowseSection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -806,6 +812,7 @@
 				C8A3048BF9EE771AAF6FA9FF /* PlaybackSessionReverseMappingTests.swift in Sources */,
 				39494F135BCFAA968986ED29 /* SingleFlightTests.swift in Sources */,
 				D46E266A8E077117FF127045 /* BrowseItemTests.swift in Sources */,
+				F99A7DC729EC057FBEE18152 /* BrowseSectionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -966,9 +973,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = Icons;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 43;
-				DEVELOPMENT_TEAM = 7UFJ7D8V6A;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -979,6 +987,7 @@
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.audiobookshelf.app.dev;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OBJC_BRIDGING_HEADER = "App/App-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -994,6 +1003,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = Icons;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 43;
 				DEVELOPMENT_TEAM = 7UFJ7D8V6A;
@@ -1006,6 +1016,7 @@
 				MARKETING_VERSION = 0.13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.audiobookshelf.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_OBJC_BRIDGING_HEADER = "App/App-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
