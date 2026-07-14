@@ -60,6 +60,11 @@ class PlayerHandler {
     public static func setPlaybackSpeed(speed: Float) {
         self.player?.setPlaybackRate(speed)
     }
+
+    /// The current playback rate (e.g. 1.0), or nil if no player is active.
+    public static func getPlaybackSpeed() -> Float? {
+        self.player?.getPlaybackRate()
+    }
     
     public static func setChapterTrack() {
         self.player?.setChapterTrack()

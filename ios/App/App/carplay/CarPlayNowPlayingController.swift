@@ -2,10 +2,12 @@
 //  CarPlayNowPlayingController.swift
 //  App
 //
-//  Adds a "Chapters" affordance to the CarPlay Now Playing screen by repurposing the built-in
-//  Up Next button. Tapping it pushes a list of the current book's chapters; selecting a chapter
-//  seeks playback to that chapter's start and returns to Now Playing. The button is enabled only
-//  while the current book actually has chapters.
+//  Adds book-oriented controls to the CarPlay Now Playing screen:
+//   - A "Chapters" affordance on the built-in Up Next button: tapping it pushes a list of the current
+//     book's chapters; selecting one seeks to its start and returns to Now Playing.
+//   - A control-row speed button that pushes a playback-speed picker (checkmark on the current speed).
+//   - Control-row previous/next-chapter buttons (shown only when the book has chapters).
+//  All are enabled/shown only while the current book actually has chapters (except speed, always shown).
 //
 //  Threading: every entry point runs on the main thread — the CarPlay observer callback is
 //  main-thread, and the player-event observers are registered on the main queue — so it is safe to
@@ -38,10 +40,10 @@ final class CarPlayNowPlayingController: NSObject, CPNowPlayingTemplateObserver 
         for event in [PlayerEvents.update, PlayerEvents.closed] {
             let observer = NotificationCenter.default.addObserver(
                 forName: NSNotification.Name(event.rawValue), object: nil, queue: .main
-            ) { [weak self] _ in self?.syncChaptersButton() }
+            ) { [weak self] _ in self?.syncButtons() }
             observers.append(observer)
         }
-        syncChaptersButton()
+        syncButtons()
     }
 
     deinit {
@@ -58,14 +60,37 @@ final class CarPlayNowPlayingController: NSObject, CPNowPlayingTemplateObserver 
         template.remove(self)
     }
 
-    /// Enable the "Chapters" (Up Next) button only when the current book has more than one chapter.
-    private func syncChaptersButton() {
-        // getPlaybackSessionId() is a plain in-memory String (no Realm); only open the Realm session
-        // to recount chapters when the id actually changes (PlayerEvents.update fires ~1/sec).
+    /// Sync the chapter-dependent controls (Up Next "Chapters" button + control-row buttons) with the
+    /// current book. The speed button is always present; the previous/next-chapter buttons appear only
+    /// when the book has chapters.
+    private func syncButtons() {
+        // getPlaybackSessionId() is a plain in-memory String (no Realm); only rebuild the controls
+        // when the session actually changes (PlayerEvents.update fires ~1/sec).
         let sessionId = PlayerHandler.getPlaybackSessionId()
         if sessionId == lastSyncedSessionId { return }
         lastSyncedSessionId = sessionId
-        template.isUpNextButtonEnabled = (PlayerHandler.getPlaybackSession()?.chapters.count ?? 0) > 1
+
+        let hasChapters = (PlayerHandler.getPlaybackSession()?.chapters.count ?? 0) > 1
+        template.isUpNextButtonEnabled = hasChapters
+
+        let speedButton = CPNowPlayingImageButton(image: Self.symbol("speedometer")) { [weak self] _ in
+            self?.presentSpeedPicker()
+        }
+        if hasChapters {
+            let prev = CPNowPlayingImageButton(image: Self.symbol("backward.end")) { [weak self] _ in
+                self?.seekChapter(-1)
+            }
+            let next = CPNowPlayingImageButton(image: Self.symbol("forward.end")) { [weak self] _ in
+                self?.seekChapter(1)
+            }
+            template.updateNowPlayingButtons([prev, speedButton, next])
+        } else {
+            template.updateNowPlayingButtons([speedButton])
+        }
+    }
+
+    private static func symbol(_ name: String) -> UIImage {
+        UIImage(systemName: name) ?? UIImage()
     }
 
     // MARK: - CPNowPlayingTemplateObserver
@@ -102,6 +127,49 @@ final class CarPlayNowPlayingController: NSObject, CPNowPlayingTemplateObserver 
         interfaceController?.pushTemplate(list, animated: true) { ok, error in
             if !ok { AbsLogger.error(message: "CarPlay: pushTemplate(chapters) failed: \(String(describing: error))") }
         }
+    }
+
+    // MARK: - Speed picker
+
+    /// The playback speeds offered, matching the phone app's speed modal.
+    private static let speeds: [Float] = [0.5, 1, 1.2, 1.5, 1.7, 2, 3]
+
+    private func presentSpeedPicker() {
+        let current = PlayerHandler.getPlaybackSpeed()
+        let items: [CPListItem] = Self.speeds.map { speed in
+            CarPlayRow.selectable(text: Self.formatSpeed(speed),
+                                  isActive: current.map { abs($0 - speed) < 0.001 } ?? false) { [weak self] in
+                PlayerHandler.setPlaybackSpeed(speed: speed)
+                self?.interfaceController?.popTemplate(animated: true, completion: nil)
+            }
+        }
+        let list = CPListTemplate(title: "Speed", sections: [CPListSection(items: items)])
+        interfaceController?.pushTemplate(list, animated: true) { ok, error in
+            if !ok { AbsLogger.error(message: "CarPlay: pushTemplate(speed) failed: \(String(describing: error))") }
+        }
+    }
+
+    /// "1×", "1.2×", etc. — whole speeds drop the decimal.
+    private static func formatSpeed(_ speed: Float) -> String {
+        let text = speed.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", speed)
+                                                                  : String(format: "%.1f", speed)
+        return "\(text)×"
+    }
+
+    // MARK: - Chapter navigation
+
+    /// Seek to the previous (delta -1) or next (delta +1) chapter. "Previous" from more than 3s into a
+    /// chapter restarts the current chapter first, matching common transport behavior.
+    private func seekChapter(_ delta: Int) {
+        guard let session = PlayerHandler.getPlaybackSession() else { return }
+        let starts = session.chapters.map { $0.start }   // value types; nothing Realm-confined escapes
+        guard !starts.isEmpty else { return }
+        let currentTime = PlayerHandler.getCurrentTime() ?? session.currentTime
+        let index = starts.lastIndex(where: { $0 <= currentTime }) ?? 0
+        var target = index + delta
+        if delta < 0 && currentTime - starts[index] > 3 { target = index }
+        target = max(0, min(target, starts.count - 1))
+        PlayerHandler.seek(amount: starts[target])
     }
 
     /// Format a chapter start time as H:MM:SS (or M:SS under an hour) for the row's detail text.
