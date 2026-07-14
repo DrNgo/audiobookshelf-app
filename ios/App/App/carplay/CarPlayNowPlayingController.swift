@@ -45,17 +45,27 @@ final class CarPlayNowPlayingController: NSObject, CPNowPlayingTemplateObserver 
     }
 
     deinit {
+        stop()
+    }
+
+    /// Detach from the shared Now Playing template and NotificationCenter. Must be called explicitly
+    /// on CarPlay disconnect: CPNowPlayingTemplate.shared is a singleton that retains its observers,
+    /// so without this the controller (and its observers) would outlive the scene and pile up across
+    /// reconnects. Idempotent — safe to call from both `stop()` and `deinit`.
+    func stop() {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers.removeAll()
         template.remove(self)
     }
 
     /// Enable the "Chapters" (Up Next) button only when the current book has more than one chapter.
     private func syncChaptersButton() {
-        let session = PlayerHandler.getPlaybackSession()
-        let sessionId = session?.id
+        // getPlaybackSessionId() is a plain in-memory String (no Realm); only open the Realm session
+        // to recount chapters when the id actually changes (PlayerEvents.update fires ~1/sec).
+        let sessionId = PlayerHandler.getPlaybackSessionId()
         if sessionId == lastSyncedSessionId { return }
         lastSyncedSessionId = sessionId
-        template.isUpNextButtonEnabled = (session?.chapters.count ?? 0) > 1
+        template.isUpNextButtonEnabled = (PlayerHandler.getPlaybackSession()?.chapters.count ?? 0) > 1
     }
 
     // MARK: - CPNowPlayingTemplateObserver
@@ -82,15 +92,11 @@ final class CarPlayNowPlayingController: NSObject, CPNowPlayingTemplateObserver 
         }
         let items: [CPListItem] = capped.map { entry in
             let isCurrent = currentTime >= entry.start && currentTime < entry.end
-            let checkmark = isCurrent ? UIImage(systemName: "checkmark") : nil
-            let item = CPListItem(text: entry.title, detailText: Self.formatTimestamp(entry.start),
-                                  image: nil, accessoryImage: checkmark, accessoryType: .none)
-            item.handler = { [weak self] _, completion in
-                completion()
+            return CarPlayRow.selectable(text: entry.title, detailText: Self.formatTimestamp(entry.start),
+                                         isActive: isCurrent) { [weak self] in
                 PlayerHandler.seek(amount: entry.start)
                 self?.interfaceController?.popTemplate(animated: true, completion: nil)
             }
-            return item
         }
         let list = CPListTemplate(title: "Chapters", sections: [CPListSection(items: items)])
         interfaceController?.pushTemplate(list, animated: true) { ok, error in

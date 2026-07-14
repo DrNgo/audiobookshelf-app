@@ -29,14 +29,7 @@ final class CarPlayLibraryController {
                 // checkmark matches the shelf that is actually showing.
                 let activeId = self.manager?.activeLibraryId ?? libraries.first?.id
                 let items: [CPListItem] = libraries.prefix(CPListTemplate.maximumItemCount).map { library in
-                    // Explicit, code-controlled "active library" indicator (a checkmark accessory),
-                    // so selection state does not depend on CarPlay's row-focus highlight.
-                    // accessoryImage is get-only, so it must be supplied at construction.
-                    let checkmark = library.id == activeId ? UIImage(systemName: "checkmark") : nil
-                    let row = CPListItem(text: library.name, detailText: nil, image: nil,
-                                         accessoryImage: checkmark, accessoryType: .none)
-                    row.handler = { [weak self] _, completion in
-                        completion()
+                    CarPlayRow.selectable(text: library.name, isActive: library.id == activeId) { [weak self] in
                         self?.manager?.activeLibraryId = library.id
                         self?.manager?.rebuildHome()
                         // Refresh so the checkmark moves to the newly selected library. bookLibraries()
@@ -45,7 +38,6 @@ final class CarPlayLibraryController {
                         // Return to Home now that the active library changed.
                         self?.manager?.interfaceController.popTemplate(animated: true, completion: nil)
                     }
-                    return row
                 }
                 let section = items.isEmpty
                     ? CPListSection(items: [CPListItem(text: "Libraries unavailable", detailText: nil)])

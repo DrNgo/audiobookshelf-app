@@ -98,6 +98,12 @@ class PlayerHandler {
 
         return player.getPlaybackSession()
     }
+
+    /// The current session id as a plain in-memory String — no Realm access. Callers that only need
+    /// to detect a session change should compare this before reaching for getPlaybackSession().
+    public static func getPlaybackSessionId() -> String? {
+        self.player?.getPlaybackSessionId()
+    }
     
     public static func seekForward(amount: Double) {
         guard let player = player else { return }

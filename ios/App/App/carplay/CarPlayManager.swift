@@ -66,6 +66,18 @@ final class CarPlayManager: NSObject {
         rebuildHome()
     }
 
+    /// Tear down when the CarPlay scene disconnects: cancel in-flight work so it can't mutate stale
+    /// templates or retain this manager, and detach the Now Playing observer (the shared template
+    /// retains it, so it must be removed explicitly or it accumulates across reconnects).
+    func stop() {
+        homeTask?.cancel()
+        homeTask = nil
+        coverTasks.forEach { $0.cancel() }
+        coverTasks.removeAll()
+        nowPlayingController?.stop()
+        nowPlayingController = nil
+    }
+
     // MARK: - Home
 
     func rebuildHome() {
@@ -108,7 +120,7 @@ final class CarPlayManager: NSObject {
                     return
                 }
                 let rows: [CPListImageRowItem] = shelves.map { shelf in
-                    CarPlayCarousel.make(title: shelf.title, items: shelf.items, covers: []) { [weak self] index in
+                    CarPlayCarousel.make(title: shelf.title, items: shelf.items) { [weak self] index in
                         guard shelf.items.indices.contains(index) else { return }
                         let item = shelf.items[index]
                         Task { @MainActor in
@@ -177,14 +189,11 @@ final class CarPlayManager: NSObject {
     }
 
     /// Crop to a centered square and resize to the CarPlay image-row max at the car's display scale.
-    /// Targets CPListImageRowItemRowElement/CPListImageRowItem sizing (not the list-item max), and
-    /// runs on the main actor because it reads the main-thread-only carTraitCollection.
+    /// Sizes to CarPlayCarousel.maximumImageSize (the image-row max, not the list-item max) and runs
+    /// on the main actor because it reads the main-thread-only carTraitCollection.
     @MainActor
     private func sizedCarouselCover(_ image: UIImage) -> UIImage {
-        let maxPoints: CGSize = {
-            if #available(iOS 26.0, *) { return CPListImageRowItemRowElement.maximumImageSize }
-            return CPListImageRowItem.maximumImageSize
-        }()
+        let maxPoints = CarPlayCarousel.maximumImageSize
         guard maxPoints.width > 0, maxPoints.height > 0, let cg = image.cgImage else { return image }
         // Crop in the CGImage's PIXEL space (not UIImage points) so a non-1x source is handled correctly.
         let w = CGFloat(cg.width), h = CGFloat(cg.height)
