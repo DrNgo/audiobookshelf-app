@@ -23,12 +23,13 @@ struct NowPlayingMetadata {
         } else {
             guard let config = Store.serverConfig else { return nil }
             
-            // As of v2.17.0 token is not needed with cover image requests
+            // As of v2.17.0 token is not needed with cover image requests. Force JPEG because the
+            // server's default WebP decodes unreliably via UIImage(data:), leaving Now Playing artless.
             let coverUrlString: String
             if Store.isServerVersionGreaterThanOrEqualTo("2.17.0") {
-                coverUrlString = "\(config.address)/api/items/\(itemId)/cover"
+                coverUrlString = "\(config.address)/api/items/\(itemId)/cover?format=jpeg"
             } else {
-                coverUrlString = "\(config.address)/api/items/\(itemId)/cover?token=\(config.token)"
+                coverUrlString = "\(config.address)/api/items/\(itemId)/cover?token=\(config.token)&format=jpeg"
             }
             
             return URL(string: coverUrlString)
