@@ -23,6 +23,9 @@ final class CarPlayManager: NSObject {
     /// The in-flight Home reload, cancelled when a newer reload starts so a slow older one can't win.
     private var homeTask: Task<Void, Never>?
 
+    /// Cover-loading tasks for the current Home render, cancelled when a newer rebuild starts.
+    private var coverTasks: [Task<Void, Never>] = []
+
     init(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
         super.init()
@@ -63,65 +66,88 @@ final class CarPlayManager: NSObject {
 
     func rebuildHome() {
         homeTask?.cancel()
+        // Cancel cover-loading tasks from a superseded rebuild so they can't apply to stale rows.
+        coverTasks.forEach { $0.cancel() }
+        coverTasks.removeAll()
         homeTask = Task { [weak self] in
             guard let self = self else { return }
-            // activeLibraryId is mutated from the main actor (Library tab) and read there (Search),
-            // so touch it only via MainActor.run to avoid a data race with this background Task.
+            // activeLibraryId is mutated/read on the main actor, so touch it only via MainActor.run
+            // to avoid a data race with this background Task.
             var libraryId = await MainActor.run { self.activeLibraryId }
             if libraryId == nil {
                 let first = await BrowseApi.firstBookLibraryId()
                 await MainActor.run { if self.activeLibraryId == nil { self.activeLibraryId = first } }
                 libraryId = first
             }
+
             let continueListening = await BrowseApi.continueListening()
             var recentlyAdded: [BrowseItem] = []
-            if let libraryId = libraryId {
-                recentlyAdded = await BrowseApi.recentlyAdded(libraryId: libraryId)
-            }
+            if let libraryId { recentlyAdded = await BrowseApi.recentlyAdded(libraryId: libraryId) }
             let downloads = BrowseApi.downloads()
+            let libraryName = await self.activeLibraryName()
             if Task.isCancelled { return }
 
-            // capped() distributes the budget fairly and drops empty sections, so Downloads always
-            // renders even behind a long Continue Listening section.
-            let sections = BrowseSection.capped([
-                BrowseSection(header: "Continue Listening", items: continueListening),
-                BrowseSection(header: "Recently Added", items: recentlyAdded),
-                BrowseSection(header: "Downloads", items: downloads),
-            ], maxItems: CPListTemplate.maximumItemCount)
+            // One shelf per non-empty source, each capped to the carousel max.
+            struct Shelf { let title: String; let items: [BrowseItem] }
+            let shelves: [Shelf] = [
+                Shelf(title: "Continue Listening", items: continueListening),
+                Shelf(title: libraryName.isEmpty ? "Recently Added" : "Recently Added · \(libraryName)", items: recentlyAdded),
+                Shelf(title: "Downloads", items: downloads),
+            ].filter { !$0.items.isEmpty }
+                .map { Shelf(title: $0.title, items: Array($0.items.prefix(Int(CPMaximumNumberOfGridImages)))) }
 
-            // Build CarPlay template objects on the main thread (CPListItem/CPListSection are
-            // main-thread-only), and bail if a newer reload superseded this one.
+            // Build rows with placeholders first so Home appears immediately, then fill covers per shelf.
             await MainActor.run {
                 if Task.isCancelled { return }
-                let listSections = sections.map {
-                    CPListSection(items: $0.items.map(self.makeRow), header: $0.header, sectionIndexTitle: nil)
+                guard !shelves.isEmpty else {
+                    self.homeTemplate.updateSections([CPListSection(items: [CPListItem(text: "Nothing to play", detailText: nil)])])
+                    return
                 }
-                let final = listSections.isEmpty
-                    ? [CPListSection(items: [CPListItem(text: "Nothing to play", detailText: nil)])]
-                    : listSections
-                self.homeTemplate.updateSections(final)
+                let rows: [CPListImageRowItem] = shelves.map { shelf in
+                    CarPlayCarousel.make(title: shelf.title, items: shelf.items, covers: []) { [weak self] index in
+                        guard shelf.items.indices.contains(index) else { return }
+                        let item = shelf.items[index]
+                        Task { @MainActor in
+                            BrowsePlaybackStarter.play(item) {
+                                self?.interfaceController.pushTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
+                            }
+                        }
+                    }
+                }
+                self.homeTemplate.updateSections([CPListSection(items: rows)])
+
+                // Load covers off the main actor, then apply to each row once its shelf is ready.
+                // Tracked in coverTasks so a superseding rebuildHome() cancels them (see method top).
+                for (shelf, row) in zip(shelves, rows) {
+                    let task = Task { [weak self] in
+                        guard let self else { return }
+                        var covers: [UIImage?] = []
+                        for item in shelf.items {
+                            if Task.isCancelled { return }
+                            covers.append(await self.carouselCover(for: item))
+                        }
+                        if Task.isCancelled { return }
+                        await MainActor.run {
+                            CarPlayCarousel.applyCovers(covers, to: row, titles: shelf.items.map { $0.title })
+                        }
+                    }
+                    self.coverTasks.append(task)
+                }
             }
         }
     }
 
-    // MARK: - Row mapping (shared with search)
-
-    func makeRow(_ item: BrowseItem) -> CPListItem {
-        let row = CPListItem(text: item.title, detailText: item.author)
-        row.handler = { [weak self] _, completion in
-            completion()
-            Task { @MainActor in
-                BrowsePlaybackStarter.play(item) {
-                    self?.interfaceController.pushTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
-                }
-            }
-        }
-        loadCover(item, into: row)
-        return row
+    /// The display name of the active library, for the "Recently Added · <name>" header. Empty if unknown.
+    private func activeLibraryName() async -> String {
+        let id = await MainActor.run { self.activeLibraryId }
+        guard let id else { return "" }
+        return await BrowseApi.bookLibraries().first(where: { $0.id == id })?.name ?? ""
     }
+
+    // MARK: - Covers
 
     /// Sized cover images keyed by cover URL. Home rebuilds recreate rows frequently (scene
-    /// reactivation, tab/library taps); without this, every rebuild re-requests every cover, and
+    /// reactivation, library switches); without this, every rebuild re-requests every cover, and
     /// the cover endpoint is rate-limited — a burst returns 429 and the covers blank out. Caching
     /// the sized image means a cover is fetched at most once and reused thereafter.
     private static let coverCache: NSCache<NSString, UIImage> = {
@@ -130,25 +156,31 @@ final class CarPlayManager: NSObject {
         return cache
     }()
 
-    private func loadCover(_ item: BrowseItem, into row: CPListItem) {
-        guard let url = item.coverURL else { return }
-        let key = url.absoluteString as NSString
-        if let cached = Self.coverCache.object(forKey: key) {
-            row.setImage(cached)
-            return
+    /// Fetch (or reuse from cache) the carousel-sized cover for one item. Returns nil if there is no
+    /// cover URL or the request fails; callers substitute a placeholder.
+    private func carouselCover(for item: BrowseItem) async -> UIImage? {
+        guard let url = item.coverURL else { return nil }
+        // Suffix the key so carousel-sized covers don't collide with any differently-sized covers.
+        let key = "\(url.absoluteString)#carousel" as NSString
+        if let cached = Self.coverCache.object(forKey: key) { return cached }
+        let image: UIImage? = await withCheckedContinuation { continuation in
+            ApiClient.getData(from: url) { continuation.resume(returning: $0) }
         }
-        ApiClient.getData(from: url) { [weak self] image in
-            guard let self, let image = image else { return }
-            let sized = self.sizedCover(image)
-            Self.coverCache.setObject(sized, forKey: key)
-            DispatchQueue.main.async { row.setImage(sized) }
-        }
+        guard let image else { return nil }
+        let sized = await MainActor.run { self.sizedCarouselCover(image) }
+        Self.coverCache.setObject(sized, forKey: key)
+        return sized
     }
 
-    /// Crop to a centered square and resize to CPListItem.maximumImageSize at the car's display
-    /// scale, so covers render crisply without shipping oversized bitmaps to the head unit.
-    private func sizedCover(_ image: UIImage) -> UIImage {
-        let maxPoints = CPListItem.maximumImageSize
+    /// Crop to a centered square and resize to the CarPlay image-row max at the car's display scale.
+    /// Targets CPListImageRowItemRowElement/CPListImageRowItem sizing (not the list-item max), and
+    /// runs on the main actor because it reads the main-thread-only carTraitCollection.
+    @MainActor
+    private func sizedCarouselCover(_ image: UIImage) -> UIImage {
+        let maxPoints: CGSize = {
+            if #available(iOS 26.0, *) { return CPListImageRowItemRowElement.maximumImageSize }
+            return CPListImageRowItem.maximumImageSize
+        }()
         guard maxPoints.width > 0, maxPoints.height > 0, let cg = image.cgImage else { return image }
         // Crop in the CGImage's PIXEL space (not UIImage points) so a non-1x source is handled correctly.
         let w = CGFloat(cg.width), h = CGFloat(cg.height)
