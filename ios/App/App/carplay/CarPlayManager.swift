@@ -93,6 +93,22 @@ final class CarPlayManager {
         }
     }
 
-    /// Placeholder until list covers are sized to CPListItem.maximumImageSize.
-    private func sizedCover(_ image: UIImage) -> UIImage { image }
+    /// Crop to a centered square and resize to CPListItem.maximumImageSize at the car's display
+    /// scale, so covers render crisply without shipping oversized bitmaps to the head unit.
+    private func sizedCover(_ image: UIImage) -> UIImage {
+        let maxPoints = CPListItem.maximumImageSize
+        guard maxPoints.width > 0, maxPoints.height > 0 else { return image }
+        let scale = interfaceController.carTraitCollection.displayScale
+        let side = min(image.size.width, image.size.height)
+        let cropRect = CGRect(
+            x: (image.size.width - side) / 2,
+            y: (image.size.height - side) / 2,
+            width: side, height: side)
+        guard let cg = image.cgImage?.cropping(to: cropRect) else { return image }
+        let square = UIImage(cgImage: cg)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale
+        let renderer = UIGraphicsImageRenderer(size: maxPoints, format: format)
+        return renderer.image { _ in square.draw(in: CGRect(origin: .zero, size: maxPoints)) }
+    }
 }
