@@ -17,6 +17,9 @@ final class CarPlayManager: NSObject {
 
     private var libraryController: CarPlayLibraryController?
 
+    /// Owns the Now Playing "Chapters" button + chapter list. Held so its observers stay alive.
+    private var nowPlayingController: CarPlayNowPlayingController?
+
     /// The library whose "Recently Added" shelf feeds Home. Defaults to the first book library.
     var activeLibraryId: String?
 
@@ -34,6 +37,7 @@ final class CarPlayManager: NSObject {
     func start() {
         let library = CarPlayLibraryController(manager: self)
         self.libraryController = library
+        self.nowPlayingController = CarPlayNowPlayingController(interfaceController: interfaceController)
 
         homeTemplate.trailingNavigationBarButtons = [
             CPBarButton(image: UIImage(systemName: "books.vertical") ?? UIImage()) { [weak self] _ in
