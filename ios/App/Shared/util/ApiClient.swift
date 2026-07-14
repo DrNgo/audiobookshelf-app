@@ -15,11 +15,11 @@ import UIKit
 
 class ApiClient {
     /// Fetch a binary image (e.g. a cover) directly. Not a JSON endpoint — stays on URLSession.
+    /// Always calls `completion` (with nil on failure) so async callers awaiting a continuation
+    /// cannot hang when the request fails — e.g. an offline/429 cover fetch.
     public static func getData(from url: URL, completion: @escaping (UIImage?) -> Void) {
         URLSession.shared.dataTask(with: url, completionHandler: {(data, response, error) in
-            if let data = data {
-                completion(UIImage(data:data))
-            }
+            completion(data.flatMap { UIImage(data: $0) })
         }).resume()
     }
 
