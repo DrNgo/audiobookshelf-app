@@ -44,6 +44,13 @@ enum BrowseApi {
         return resp.libraries?.first(where: { $0.mediaType == "book" })?.id
     }
 
+    /// The user's book libraries (id + name) for the CarPlay Library tab. [] on failure.
+    static func bookLibraries() async -> [BrowseLibrary] {
+        guard let config = ABSClientProvider.config else { return [] }
+        guard let data = await ABSApiClient.fetchLibrariesData(config: config) else { return [] }
+        return BrowseLibrary.fromLibraries(data: data)
+    }
+
     /// Search the first book library for `query` and return matching books. [] on failure/no library.
     static func search(query: String, limit: Int = 12) async -> [BrowseItem] {
         guard let config = ABSClientProvider.config else { return [] }
