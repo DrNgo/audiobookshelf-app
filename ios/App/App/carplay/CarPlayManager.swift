@@ -2,71 +2,78 @@
 //  CarPlayManager.swift
 //  App
 //
-//  Builds and drives the CarPlay browse UI: a root list with "Continue Listening" and
-//  "Recently Added" (server) and "Downloads" (local) sections. Selecting a row starts playback
-//  and presents the system Now Playing screen. Server sections are best-effort — on offline or
-//  error they are simply omitted, leaving the always-available Downloads section, because a car
-//  is frequently offline.
+//  Builds and drives the CarPlay UI: a tab bar with Home (Continue Listening / Recently Added /
+//  Downloads), Library (switch which server library feeds Recently Added), and Search. Server
+//  sections are best-effort — offline they are omitted, leaving the always-available Downloads
+//  section. All lists honor CPListTemplate.maximumItemCount.
 //
 
 import CarPlay
 import UIKit
 
 final class CarPlayManager {
-    private let interfaceController: CPInterfaceController
-    private let rootTemplate: CPListTemplate
+    let interfaceController: CPInterfaceController
+    private let tabBar = CPTabBarTemplate(templates: [])
+    private let homeTemplate = CPListTemplate(title: "Home", sections: [])
+
+    private var libraryController: CarPlayLibraryController?
+    private var searchController: CarPlaySearchController?
+
+    /// The library whose "Recently Added" shelf feeds Home. Defaults to the first book library.
+    var activeLibraryId: String?
 
     init(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
-        self.rootTemplate = CPListTemplate(title: "Audiobookshelf", sections: [])
     }
 
     func start() {
-        interfaceController.setRootTemplate(rootTemplate, animated: false, completion: nil)
-        Task { await reload() }
+        let library = CarPlayLibraryController(manager: self)
+        let search = CarPlaySearchController(manager: self)
+        self.libraryController = library
+        self.searchController = search
+
+        homeTemplate.tabTitle = "Home"
+        homeTemplate.tabImage = UIImage(systemName: "house")
+        tabBar.updateTemplates([homeTemplate, library.template, search.template])
+        interfaceController.setRootTemplate(tabBar, animated: false, completion: nil)
+        rebuildHome()
     }
 
-    // MARK: - Loading
+    // MARK: - Home
 
-    private func reload() async {
-        // Downloads are local and synchronous; the server sources load over the network.
-        let downloads = BrowseApi.downloads()
-        let continueListening = await BrowseApi.continueListening()
-        var recentlyAdded: [BrowseItem] = []
-        if let libraryId = await BrowseApi.firstBookLibraryId() {
-            recentlyAdded = await BrowseApi.recentlyAdded(libraryId: libraryId)
+    func rebuildHome() {
+        Task {
+            if activeLibraryId == nil { activeLibraryId = await BrowseApi.firstBookLibraryId() }
+            let continueListening = await BrowseApi.continueListening()
+            var recentlyAdded: [BrowseItem] = []
+            if let libraryId = activeLibraryId {
+                recentlyAdded = await BrowseApi.recentlyAdded(libraryId: libraryId)
+            }
+            let downloads = BrowseApi.downloads()
+
+            var sections = [
+                BrowseSection(header: "Continue Listening", items: continueListening),
+                BrowseSection(header: "Recently Added", items: recentlyAdded),
+                BrowseSection(header: "Downloads", items: downloads),
+            ].filter { !$0.items.isEmpty }
+            sections = BrowseSection.capped(sections, maxItems: CPListTemplate.maximumItemCount)
+
+            let listSections = sections.map {
+                CPListSection(items: $0.items.map(makeRow), header: $0.header, sectionIndexTitle: nil)
+            }
+            let final = listSections.isEmpty
+                ? [CPListSection(items: [CPListItem(text: "Nothing to play", detailText: nil)])]
+                : listSections
+            await MainActor.run { self.homeTemplate.updateSections(final) }
         }
-
-        let sections = buildSections(continueListening: continueListening,
-                                     recentlyAdded: recentlyAdded,
-                                     downloads: downloads)
-        await MainActor.run { self.rootTemplate.updateSections(sections) }
     }
 
-    private func buildSections(continueListening: [BrowseItem],
-                               recentlyAdded: [BrowseItem],
-                               downloads: [BrowseItem]) -> [CPListSection] {
-        var sections: [CPListSection] = []
-        func addSection(_ title: String, _ items: [BrowseItem]) {
-            guard !items.isEmpty else { return }
-            sections.append(CPListSection(items: items.map(makeRow), header: title, sectionIndexTitle: nil))
-        }
-        addSection("Continue Listening", continueListening)
-        addSection("Recently Added", recentlyAdded)
-        addSection("Downloads", downloads)
+    // MARK: - Row mapping (shared with search)
 
-        if sections.isEmpty {
-            sections.append(CPListSection(items: [CPListItem(text: "Nothing to play", detailText: nil)]))
-        }
-        return sections
-    }
-
-    // MARK: - Rows
-
-    private func makeRow(_ item: BrowseItem) -> CPListItem {
+    func makeRow(_ item: BrowseItem) -> CPListItem {
         let row = CPListItem(text: item.title, detailText: item.author)
         row.handler = { [weak self] _, completion in
-            completion() // acknowledge the tap immediately
+            completion()
             Task { @MainActor in
                 BrowsePlaybackStarter.play(item) {
                     self?.interfaceController.pushTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
@@ -79,9 +86,13 @@ final class CarPlayManager {
 
     private func loadCover(_ item: BrowseItem, into row: CPListItem) {
         guard let url = item.coverURL else { return }
-        ApiClient.getData(from: url) { image in
+        ApiClient.getData(from: url) { [weak self] image in
             guard let image = image else { return }
-            DispatchQueue.main.async { row.setImage(image) }
+            let sized = self?.sizedCover(image) ?? image
+            DispatchQueue.main.async { row.setImage(sized) }
         }
     }
+
+    /// Placeholder until list covers are sized to CPListItem.maximumImageSize.
+    private func sizedCover(_ image: UIImage) -> UIImage { image }
 }

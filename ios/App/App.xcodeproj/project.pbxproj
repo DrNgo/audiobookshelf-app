@@ -34,6 +34,7 @@
 		4D91EEC62A40F28D004807ED /* EBookFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D91EEC52A40F28D004807ED /* EBookFile.swift */; };
 		4DABC04F2B0139CA000F6264 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DABC04E2B0139CA000F6264 /* User.swift */; };
 		4DB441E12E19B8BF0056C8F1 /* SecureStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DB441E02E19B8BF0056C8F1 /* SecureStorage.swift */; };
+		4DED8DF6EA6D7542111C6E27 /* CarPlaySearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C6FAF3DA1AFED8CCF1A9F46 /* CarPlaySearchController.swift */; };
 		4DF6C7172DB58ABF004059F1 /* AbsLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DF6C7162DB58ABF004059F1 /* AbsLogger.swift */; };
 		4DF74912287105C600AC7814 /* DeviceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DF74911287105C600AC7814 /* DeviceSettings.swift */; };
 		4DFE2DA32D345C390000B204 /* MyViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DFE2DA22D345C390000B204 /* MyViewController.swift */; };
@@ -60,6 +61,7 @@
 		BA103077CE702C50901E1A27 /* PlaybackSessionMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FD2A93810100A769592643B /* PlaybackSessionMapping.swift */; };
 		BADB0FFD20F18520F6C439DA /* Pods_AudiobookshelfUnitTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 233CB56FD326F369FEED5390 /* Pods_AudiobookshelfUnitTests.framework */; };
 		BEE1FED3CE20AB25AA044F50 /* AudiobookshelfWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 122A7EA32D78DA32E4674564 /* AudiobookshelfWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C1B26A09D91227E47AE6E6E5 /* CarPlayLibraryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E05CED6EF800384B58EC011 /* CarPlayLibraryController.swift */; };
 		C8A3048BF9EE771AAF6FA9FF /* PlaybackSessionReverseMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46838E6A9700D4ABE7C272CC /* PlaybackSessionReverseMappingTests.swift */; };
 		CD1822EE4981C11BD2CA33EF /* WidgetSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF93D69239CB82EA485F45CF /* WidgetSync.swift */; };
 		D46E266A8E077117FF127045 /* BrowseItemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05AEFF9DCAF4378C16B374CE /* BrowseItemTests.swift */; };
@@ -167,6 +169,7 @@
 		4DF6C7162DB58ABF004059F1 /* AbsLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AbsLogger.swift; sourceTree = "<group>"; };
 		4DF74911287105C600AC7814 /* DeviceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSettings.swift; sourceTree = "<group>"; };
 		4DFE2DA22D345C390000B204 /* MyViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyViewController.swift; sourceTree = "<group>"; };
+		4E05CED6EF800384B58EC011 /* CarPlayLibraryController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CarPlayLibraryController.swift; path = App/carplay/CarPlayLibraryController.swift; sourceTree = "<group>"; };
 		4F79D8D916FAE549AF0BBF64 /* BrowseLibrary.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowseLibrary.swift; path = Shared/util/browse/BrowseLibrary.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* Audiobookshelf.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Audiobookshelf.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -182,6 +185,7 @@
 		6CE94268991F6119E32551AC /* WidgetCommandReceiver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetCommandReceiver.swift; path = App/widget/WidgetCommandReceiver.swift; sourceTree = "<group>"; };
 		6F2516262E68DA3000F40541 /* LogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntry.swift; sourceTree = "<group>"; };
 		6F8E0E9C70DFEF087FEC3BAD /* App.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = App.entitlements; path = App/App.entitlements; sourceTree = "<group>"; };
+		7C6FAF3DA1AFED8CCF1A9F46 /* CarPlaySearchController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CarPlaySearchController.swift; path = App/carplay/CarPlaySearchController.swift; sourceTree = "<group>"; };
 		89498D073F228221C043E0FB /* PlaybackSessionMappingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PlaybackSessionMappingTests.swift; path = AudiobookshelfUnitTests/Shared/util/absapi/PlaybackSessionMappingTests.swift; sourceTree = "<group>"; };
 		8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Audiobookshelf.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		9084D29DAAE715B5071C3123 /* CarPlayManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CarPlayManager.swift; path = App/carplay/CarPlayManager.swift; sourceTree = "<group>"; };
@@ -400,6 +404,8 @@
 				34CE56021B80E95679C493A7 /* BrowseSectionTests.swift */,
 				4F79D8D916FAE549AF0BBF64 /* BrowseLibrary.swift */,
 				FD6CA748237B31A41EECD113 /* BrowseLibraryTests.swift */,
+				4E05CED6EF800384B58EC011 /* CarPlayLibraryController.swift */,
+				7C6FAF3DA1AFED8CCF1A9F46 /* CarPlaySearchController.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -807,6 +813,8 @@
 				F14B2AA1273A8D87B6DB202F /* WidgetCommandReceiver.swift in Sources */,
 				56763B7F5D013E443327F5BF /* BrowseSection.swift in Sources */,
 				EB64C44804BC8264A0B17072 /* BrowseLibrary.swift in Sources */,
+				C1B26A09D91227E47AE6E6E5 /* CarPlayLibraryController.swift in Sources */,
+				4DED8DF6EA6D7542111C6E27 /* CarPlaySearchController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
