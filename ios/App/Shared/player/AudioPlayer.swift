@@ -544,6 +544,10 @@ class AudioPlayer: NSObject {
     public func isPlaying() -> Bool {
         return self.status == .playing
     }
+
+    public func getPlaybackRate() -> Float {
+        return self.rateManager.rate
+    }
     
     public func getPlayerState() -> PlayerState {
         switch status {
@@ -789,17 +793,25 @@ class AudioPlayer: NSObject {
     }
     private func updateNowPlaying() {
         NotificationCenter.default.post(name: NSNotification.Name(PlayerEvents.update.rawValue), object: nil)
-        if let session = self.getPlaybackSession(), let currentChapter = session.getCurrentChapter(), PlayerSettings.main().chapterTrack {
+        // Publish the LIVE player position, not session.currentTime. session.currentTime only updates
+        // every few seconds (progress saves), so feeding it to Now Playing made the CarPlay / lock-
+        // screen progress bar jitter (the system extrapolates forward at rate 1, then each republish
+        // snapped it back to the stale base) and jump backward several seconds on pause. Select the
+        // current chapter from the live time too, so the chapter and its relative time stay consistent
+        // across chapter boundaries. Falls back to session.currentTime only when the live time is nil.
+        let liveTime = self.getCurrentTime()
+        if let session = self.getPlaybackSession(), PlayerSettings.main().chapterTrack,
+           let currentChapter = session.getChapter(at: liveTime ?? session.currentTime) {
             NowPlayingInfo.shared.update(
                 duration: currentChapter.getRelativeChapterEndTime(),
-                currentTime: currentChapter.getRelativeChapterCurrentTime(sessionCurrentTime: session.currentTime),
+                currentTime: currentChapter.getRelativeChapterCurrentTime(sessionCurrentTime: liveTime ?? session.currentTime),
                 rate: self.rateManager.rate,
                 defaultRate: self.rateManager.defaultRate,
                 chapterName: currentChapter.title,
                 chapterNumber: (session.chapters.firstIndex(of: currentChapter) ?? 0) + 1,
                 chapterCount: session.chapters.count
             )
-        } else if let duration = self.getDuration(), let currentTime = self.getCurrentTime() {
+        } else if let duration = self.getDuration(), let currentTime = liveTime {
             NowPlayingInfo.shared.update(duration: duration, currentTime: currentTime, rate: self.rateManager.rate, defaultRate: self.rateManager.defaultRate)
         }
     }

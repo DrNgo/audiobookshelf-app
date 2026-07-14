@@ -162,9 +162,14 @@ class PlaybackSession: Object, Codable, Deletable {
 }
 
 extension PlaybackSession {
-    func getCurrentChapter() -> Chapter? {
+    /// The chapter containing the given absolute session time, or nil if none covers it.
+    func getChapter(at time: Double) -> Chapter? {
         return chapters.first { chapter in
-            chapter.start <= self.currentTime && chapter.end > self.currentTime
+            chapter.start <= time && chapter.end > time
         }
+    }
+
+    func getCurrentChapter() -> Chapter? {
+        return getChapter(at: self.currentTime)
     }
 }
