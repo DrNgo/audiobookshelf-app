@@ -58,8 +58,13 @@ class NowPlayingInfo {
             let artwork = MPMediaItemArtwork.init(boundsSize: downloadedImage.size, requestHandler: { _ -> UIImage in
                 return downloadedImage
             })
-            
-            self.setMetadata(artwork: artwork, metadata: metadata)
+
+            // The URLSession callback runs off the main thread; setMetadata mutates the shared
+            // nowPlayingInfo dictionary that update() also mutates on main, so hop to main to avoid
+            // a data race.
+            DispatchQueue.main.async {
+                self.setMetadata(artwork: artwork, metadata: metadata)
+            }
         }
     }
     public func update(duration: Double, currentTime: Double, rate: Float, defaultRate: Float, chapterName: String? = nil, chapterNumber: Int? = nil, chapterCount: Int? = nil) {
