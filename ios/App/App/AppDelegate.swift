@@ -80,10 +80,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Listen for transport commands from the widget's control buttons.
         WidgetCommandReceiver.shared.start()
 
-        // A cold launch via a custom URL scheme (e.g. the widget's audiobookshelf://resume) delivers
-        // the URL ONLY in launchOptions — iOS does not call application(_:open:) in that case — so
-        // Capacitor never sees it (no appUrlOpen, no getLaunchUrl). Forward it to Capacitor's proxy so
-        // it records lastURL and posts the open-URL notification, letting the web layer resume.
+        // NOTE: NOT the live cold-launch-URL path. Because Info.plist declares a
+        // UIApplicationSceneManifest (unconditionally), the app runs the scene lifecycle and this
+        // launchOptions[.url] entry does NOT fire — a cold launch via custom scheme (e.g. the widget's
+        // audiobookshelf://resume) now arrives in DefaultSceneDelegate.scene(_:willConnectTo:) via
+        // connectionOptions.urlContexts, which forwards it to Capacitor's proxy. This block is kept
+        // only as a defensive fallback for the (currently unreachable) non-scene launch path; forwarding
+        // here records lastURL and posts the open-URL notification, letting the web layer resume.
         if let url = launchOptions?[.url] as? URL {
             _ = ApplicationDelegateProxy.shared.application(application, open: url, options: [:])
         }
@@ -118,17 +121,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        // Forward every URL (incl. the widget's audiobookshelf://resume deep link) to Capacitor so
-        // the web layer receives it via appUrlOpen and resumes through the mature in-app play flow.
-        // Called when the app was launched with a url. Feel free to add additional processing here,
-        // but if you want the App API to support tracking app url opens, make sure to keep this call
+        // NOTE: superseded by the scene lifecycle — not the live path. With a window scene delegate
+        // present, UIKit routes warm custom-scheme opens (incl. the widget's audiobookshelf://resume
+        // deep link) to DefaultSceneDelegate.scene(_:openURLContexts:) instead of this method, so
+        // fix URL-open behavior THERE, not here. Retained as the conventional Capacitor AppDelegate
+        // hook and a harmless fallback; it still forwards to Capacitor's proxy so the web layer
+        // receives the URL via appUrlOpen and resumes through the mature in-app play flow.
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-        // Called when the app was launched with an activity, including Universal Links.
-        // Feel free to add additional processing here, but if you want the App API to support
-        // tracking app url opens, make sure to keep this call
+        // NOTE: superseded by the scene lifecycle — not the live path. With a window scene delegate
+        // present, UIKit routes continuity / Universal Links to DefaultSceneDelegate.scene(_:continue:)
+        // instead of this method, so fix continuity behavior THERE, not here. Retained as the
+        // conventional Capacitor AppDelegate hook and a harmless fallback; it still forwards to
+        // Capacitor's proxy.
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
