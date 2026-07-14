@@ -324,10 +324,15 @@ export default {
       this.widgetResumeInFlight = true
 
       try {
-        const ready = await this.waitForServerReady()
-        if (!ready) {
-          console.warn('[AudioPlayerContainer] onUrlOpen: not connected, cannot resume widget link')
-          return
+        // Local (downloaded) items play offline, so don't block them on server connectivity — this is
+        // what makes CarPlay's Downloads section usable in a car with no signal.
+        const isLocalItem = (resume.libraryItemId || '').startsWith('local')
+        if (!isLocalItem) {
+          const ready = await this.waitForServerReady()
+          if (!ready) {
+            console.warn('[AudioPlayerContainer] onUrlOpen: not connected, cannot resume widget link')
+            return
+          }
         }
         // Re-check after the await: the requested book may have started streaming in the meantime.
         if (resume.libraryItemId && this.$store.getters['getIsMediaStreaming'](resume.libraryItemId, resume.episodeId)) return

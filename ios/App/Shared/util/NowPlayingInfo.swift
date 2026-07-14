@@ -87,7 +87,7 @@ class NowPlayingInfo {
             }
         }
     }
-    
+
     public func reset() {
         nowPlayingInfo = [:]
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -111,6 +111,14 @@ class NowPlayingInfo {
         nowPlayingInfo[MPMediaItemPropertyTitle] = metadata!.title
         nowPlayingInfo[MPMediaItemPropertyArtist] = metadata!.author ?? "unknown"
         nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = metadata!.title
+
+        // Publish immediately so the title + cover reach CarPlay / the lock screen right away,
+        // instead of only when the next time-observer-driven update() fires — which never happens
+        // if playback is stalled or paused. update() later republishes with duration/elapsed/rate.
+        let snapshot = nowPlayingInfo
+        DispatchQueue.main.async {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = snapshot
+        }
     }
     
     private func shouldFetchCover(id: String) -> Bool {
