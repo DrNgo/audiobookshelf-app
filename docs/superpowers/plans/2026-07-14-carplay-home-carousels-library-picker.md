@@ -11,7 +11,9 @@
 ## Global Constraints
 
 - Branch `feat/sdk-browse-endpoints`; every commit must stay upstream-mergeable (no local `DEVELOPMENT_TEAM = NG5DZJG8LP` / `com.audiobookshelfngo.app` leak).
-- Deployment target **iOS 13.0 / 14.0** → per-cover-title APIs need `@available` guards. Ladder: iOS 26+ `CPListImageRowItem(text:elements:allowsMultipleLines:)`; iOS 17.4–25.x `CPListImageRowItem(text:images:imageTitles:)`; iOS 14–17.3 `CPListImageRowItem(text:images:)` (no per-cover titles).
+- **App target minimum is iOS 14.0** (the wider project floor is 13.0 for other targets, but the `Audiobookshelf` app target — which owns all CarPlay code — is 14.0). All CarPlay APIs used here are iOS 14+, so no iOS-13 guard is needed; the ladder is only for the newer per-cover-title APIs. Ladder: iOS 26+ `CPListImageRowItem(text:elements:allowsMultipleLines:)`; iOS 17.4–25.x `CPListImageRowItem(text:images:imageTitles:)`; iOS 14–17.3 `CPListImageRowItem(text:images:)` (no per-cover titles).
+- **Main-actor rule:** every CarPlay template object (`CPListImageRowItem`, `CPListImageRowItemRowElement`, `CPListTemplate`, `CPBarButton`) and `CPInterfaceController` (incl. `carTraitCollection`) is main-thread-only. Construct/mutate them on the main actor; only network/cover *fetching* runs off-main.
+- **Carousel cover sizing:** size carousel covers to the *image-row* max, not the list-item max — `CPListImageRowItemRowElement.maximumImageSize` on iOS 26+, else `CPListImageRowItem.maximumImageSize` (NOT `CPListItem.maximumImageSize`), at `interfaceController.carTraitCollection.displayScale`.
 - New Swift files must be registered into the `Audiobookshelf` target via the `xcodeproj` gem and committed with the **commit-xcodeproj-changes** skill (project.pbxproj is `assume-unchanged`). Existing-file edits commit normally.
 - Books only. Playback via `BrowsePlaybackStarter.play(item) { push CPNowPlayingTemplate.shared }`. Reuse `BrowseCache` (browse data) and the sized-cover `NSCache` in `CarPlayManager` (covers).
 - Per-cover text = **book title only**. Library button = `books.vertical` SF Symbol icon; current library name shown in the Recently Added shelf header ("Recently Added · <Library>").
@@ -52,8 +54,12 @@ func start() {
 /// Push the library picker on top of Home. Selecting a library pops back (see CarPlayLibraryController).
 func presentLibraryPicker() {
     guard let library = libraryController else { return }
+    // Guard against double-taps re-pushing the same template.
+    guard interfaceController.topTemplate !== library.template else { return }
     library.reload()
-    interfaceController.pushTemplate(library.template, animated: true, completion: nil)
+    interfaceController.pushTemplate(library.template, animated: true) { ok, error in
+        if !ok { AbsLogger.error(message: "CarPlay: pushTemplate(library) failed: \(String(describing: error))") }
+    }
 }
 ```
 
@@ -126,6 +132,8 @@ Add one reusable helper that builds a `CPListImageRowItem` cover carousel from a
 import CarPlay
 import UIKit
 
+// @MainActor: every method constructs/mutates main-thread-only CarPlay template objects.
+@MainActor
 enum CarPlayCarousel {
     /// A neutral placeholder shown until a real cover loads (or when a cover fails to load).
     static let placeholder: UIImage = UIImage(systemName: "book.closed") ?? UIImage()
@@ -225,22 +233,42 @@ Rewire `rebuildHome()` to build three `CPListImageRowItem` carousels (Continue L
 - Consumes: `CarPlayCarousel.make(title:items:covers:onSelect:)`, `CarPlayCarousel.applyCovers(_:to:titles:)`, `BrowseApi.continueListening()/recentlyAdded(libraryId:)/downloads()`, `BrowsePlaybackStarter.play`, existing `Self.coverCache`, `sizedCover(_:)`, `BrowseApi.bookLibraries()` (for the library name in the header).
 - Produces: Home rendered as ≤3 carousels; `loadCover` for single `CPListItem`s is no longer used by Home.
 
-- [ ] **Step 1: Add a cover fetch that returns the sized image (for carousels).** In `CarPlayManager.swift`, add alongside the existing cover cache:
+- [ ] **Step 1: Add a carousel cover fetch that sizes on the main actor.** In `CarPlayManager.swift`, add alongside the existing cover cache. Note: the cache key is suffixed `#carousel` so carousel-sized covers don't collide with the (differently sized) list-item covers cached by the existing `loadCover`; and `sizedCarouselCover` runs on the main actor because it reads `interfaceController.carTraitCollection` (main-thread-only).
 
 ```swift
-/// Fetch (or reuse from cache) the sized cover for one item. Returns nil if there is no cover URL
-/// or the request fails; callers substitute a placeholder.
-private func sizedCover(for item: BrowseItem) async -> UIImage? {
+/// Fetch (or reuse from cache) the carousel-sized cover for one item. Returns nil if there is no
+/// cover URL or the request fails; callers substitute a placeholder.
+private func carouselCover(for item: BrowseItem) async -> UIImage? {
     guard let url = item.coverURL else { return nil }
-    let key = url.absoluteString as NSString
+    let key = "\(url.absoluteString)#carousel" as NSString
     if let cached = Self.coverCache.object(forKey: key) { return cached }
     let image: UIImage? = await withCheckedContinuation { continuation in
         ApiClient.getData(from: url) { continuation.resume(returning: $0) }
     }
     guard let image else { return nil }
-    let sized = sizedCover(image)
+    let sized = await MainActor.run { self.sizedCarouselCover(image) }
     Self.coverCache.setObject(sized, forKey: key)
     return sized
+}
+
+/// Crop to a centered square and resize to the CarPlay image-row max at the car's display scale.
+/// Mirrors sizedCover(_:) but targets CPListImageRowItemRowElement/CPListImageRowItem sizing.
+@MainActor
+private func sizedCarouselCover(_ image: UIImage) -> UIImage {
+    let maxPoints: CGSize = {
+        if #available(iOS 26.0, *) { return CPListImageRowItemRowElement.maximumImageSize }
+        return CPListImageRowItem.maximumImageSize
+    }()
+    guard maxPoints.width > 0, maxPoints.height > 0, let cg = image.cgImage else { return image }
+    let w = CGFloat(cg.width), h = CGFloat(cg.height)
+    let side = min(w, h)
+    let cropRect = CGRect(x: (w - side) / 2, y: (h - side) / 2, width: side, height: side)
+    guard let cropped = cg.cropping(to: cropRect) else { return image }
+    let square = UIImage(cgImage: cropped)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = interfaceController.carTraitCollection.displayScale
+    let renderer = UIGraphicsImageRenderer(size: maxPoints, format: format)
+    return renderer.image { _ in square.draw(in: CGRect(origin: .zero, size: maxPoints)) }
 }
 ```
 
@@ -260,6 +288,9 @@ private func activeLibraryName() async -> String {
 ```swift
 func rebuildHome() {
     homeTask?.cancel()
+    // Cancel cover-loading tasks from a superseded rebuild so they can't apply to stale rows.
+    coverTasks.forEach { $0.cancel() }
+    coverTasks.removeAll()
     homeTask = Task { [weak self] in
         guard let self = self else { return }
         var libraryId = await MainActor.run { self.activeLibraryId }
@@ -306,22 +337,37 @@ func rebuildHome() {
             self.homeTemplate.updateSections([CPListSection(items: rows)])
 
             // Load covers off the main actor, then apply to each row once its shelf is ready.
+            // Tracked in coverTasks so a superseding rebuildHome() cancels them (see method top).
             for (shelf, row) in zip(shelves, rows) {
-                Task { [weak self] in
+                let task = Task { [weak self] in
                     guard let self else { return }
                     var covers: [UIImage?] = []
-                    for item in shelf.items { covers.append(await self.sizedCover(for: item)) }
+                    for item in shelf.items {
+                        if Task.isCancelled { return }
+                        covers.append(await self.carouselCover(for: item))
+                    }
+                    if Task.isCancelled { return }
                     await MainActor.run {
                         CarPlayCarousel.applyCovers(covers, to: row, titles: shelf.items.map { $0.title })
                     }
                 }
+                self.coverTasks.append(task)
             }
         }
     }
 }
 ```
 
-- [ ] **Step 4: Remove the now-unused `makeRow` and `loadCover`.** Delete `func makeRow(_:) -> CPListItem` and `private func loadCover(_:into:)` from `CarPlayManager.swift` (Home no longer builds single `CPListItem` book rows; `sizedCover(for:)` replaces `loadCover`). Keep `private func sizedCover(_ image: UIImage) -> UIImage` and `Self.coverCache`.
+Also add the tracking property near `homeTask` at the top of `CarPlayManager`:
+
+```swift
+/// Cover-loading tasks for the current Home render, cancelled when a newer rebuild starts.
+private var coverTasks: [Task<Void, Never>] = []
+```
+
+- [ ] **Step 4: Remove the now-unused `makeRow` and `loadCover`.** Delete `func makeRow(_:) -> CPListItem` and `private func loadCover(_:into:)` from `CarPlayManager.swift` (Home no longer builds single `CPListItem` book rows; `carouselCover(for:)` + `sizedCarouselCover(_:)` replace `loadCover`). `Self.coverCache` is still used (by `carouselCover`). The old `private func sizedCover(_ image: UIImage) -> UIImage` becomes unused once `loadCover` is gone — delete it too (its logic now lives in `sizedCarouselCover`).
+
+  Shelf-label note (reconciles spec §3c): the shelf name is the `CPListImageRowItem` **row text** (rendered above its carousel), not a separate `CPListSection` header — all three carousels live in one headerless `CPListSection`. This avoids double labeling and works across the availability ladder (row `text` is provided at init on every branch).
 
 - [ ] **Step 5: Build & run.**
 
@@ -330,7 +376,7 @@ Expected: build SUCCEEDED.
 
 - [ ] **Step 6: Verify on the CarPlay simulator.** Confirm:
   - Home shows up to three **horizontal cover carousels**; vertical scrolling is short (≤3 rows).
-  - Each cover has its **book title** beneath it; the Recently Added header reads "Recently Added · <Library>".
+  - Each cover has its **book title** beneath it (per-cover titles require iOS 17.4+; on iOS 14–17.3 covers render without captions, which is expected). The Recently Added shelf label reads "Recently Added · <Library>".
   - Covers populate shortly after the row appears (placeholder → cover), and persist across navigation.
   - Tapping a cover starts playback and shows Now Playing.
   - Switching library via the picker rebuilds the shelves and the header name.
@@ -363,27 +409,32 @@ With three fixed carousels each capped independently, the cross-section fair-bud
 Run: `grep -rn "BrowseSection" ios/App --include='*.swift' | grep -v Tests`
 Expected: no references outside its own definition (Task 3 stopped using it). If any remain, keep the type and remove only `capped`; otherwise delete the file.
 
-- [ ] **Step 2: Delete the source and test files** (assuming Step 1 shows `BrowseSection` fully unused).
+- [ ] **Step 2: Delete both tracked source files** (assuming Step 1 shows `BrowseSection` fully unused).
 
 ```bash
 cd /Users/michaelngo/projects/audiobookshelf-app
-git rm ios/App/AudiobookshelfUnitTests/Shared/util/browse/BrowseSectionTests.swift
-rm ios/App/Shared/util/browse/BrowseSection.swift
+git rm ios/App/AudiobookshelfUnitTests/Shared/util/browse/BrowseSectionTests.swift \
+       ios/App/Shared/util/browse/BrowseSection.swift
 ```
 
-- [ ] **Step 3: Remove both file references from the project via the xcodeproj gem.**
+- [ ] **Step 3: Remove both file references AND their build-phase entries via the xcodeproj gem.** Removing the file ref alone can leave a stale `PBXBuildFile` in a target's Sources phase, breaking the build — so drop the build-phase entry from every target first.
 
 ```bash
 cd /Users/michaelngo/projects/audiobookshelf-app
 ruby - <<'RUBY'
 require 'xcodeproj'
 proj = Xcodeproj::Project.open('ios/App/App.xcodeproj')
-%w[BrowseSection.swift BrowseSectionTests.swift].each do |name|
-  proj.files.select { |f| f.display_name == name }.each(&:remove_from_project)
+names = %w[BrowseSection.swift BrowseSectionTests.swift]
+proj.targets.each do |t|
+  t.source_build_phase.files.dup.each do |bf|
+    t.source_build_phase.remove_build_file(bf) if bf.file_ref && names.include?(bf.file_ref.display_name)
+  end
 end
+names.each { |n| proj.files.select { |f| f.display_name == n }.each(&:remove_from_project) }
 proj.save
-puts 'removed BrowseSection refs'
+puts 'removed BrowseSection refs + build files'
 RUBY
+grep -c "BrowseSection" ios/App/App.xcodeproj/project.pbxproj  # expect 0
 ```
 
 - [ ] **Step 4: Run the full unit-test suite.**
@@ -425,6 +476,8 @@ MSG
 **Placeholder scan:** none — every code step contains full code; the one "confirm the pbxproj path prefix" note in Task 2 Step 2 is a verification instruction with the concrete expected value given, not a deferred requirement.
 
 **Type consistency:** `CarPlayCarousel.make(title:items:covers:onSelect:)` and `applyCovers(_:to:titles:)` are defined in Task 2 and consumed with the same signatures in Task 3. `sizedCover(for:) async -> UIImage?` (new) is distinct from `sizedCover(_ image:) -> UIImage` (existing) and both are used in Task 3. `presentLibraryPicker()` defined and used in Task 1.
+
+**Codex review incorporated (2026-07-14):** carousel covers size to `CPListImageRowItemRowElement`/`CPListImageRowItem.maximumImageSize` (not `CPListItem`) via a main-actor `sizedCarouselCover`; `CarPlayCarousel` is `@MainActor`; `carouselCover` sizes on the main actor (no off-main `carTraitCollection`); `presentLibraryPicker` guards `topTemplate` and logs push failures; cover-load tasks are tracked in `coverTasks` and cancelled on rebuild; shelf label is the row `text` (one headerless section) — spec §3c reconciled; app-target floor clarified to iOS 14; verification made OS-specific for titles; Task 4 removes build-phase entries before file refs.
 
 **Open risks (resolve during implementation, not blockers):**
 - `CPMaximumNumberOfGridImages` is an `NSUInteger`; `Int(...)` cast used for `prefix`. Confirm it imports as a Swift constant (it does via the CarPlay module).
