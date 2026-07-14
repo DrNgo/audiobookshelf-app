@@ -767,9 +767,12 @@ class AudioPlayer: NSObject {
             guard let event = event as? MPChangePlaybackPositionCommandEvent else {
                 return .noSuchContent
             }
-            
-            // Adjust seek time if chapter track is being used
-            var seekTime = event.positionTime
+
+            // Now Playing publishes times in wall-clock seconds (book seconds ÷ playback speed) so the
+            // remaining time reflects the speed; the scrubber therefore reports a wall-clock position.
+            // Convert it back to book seconds before seeking.
+            let speed = (self?.rateManager.defaultRate).map { $0 > 0 ? Double($0) : 1.0 } ?? 1.0
+            var seekTime = event.positionTime * speed
             if PlayerSettings.main().chapterTrack {
                 if let session = self?.getPlaybackSession(), let currentChapter = session.getCurrentChapter() {
                     seekTime += currentChapter.start

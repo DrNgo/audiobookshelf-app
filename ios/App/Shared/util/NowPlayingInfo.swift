@@ -71,10 +71,19 @@ class NowPlayingInfo {
         // Update on the main to prevent access collisions
         DispatchQueue.main.async { [weak self] in
             if let self = self {
-                self.nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
-                self.nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-                self.nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = rate
-                self.nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = defaultRate
+                // Publish times in REAL (wall-clock) seconds instead of raw book seconds, so the
+                // CarPlay / lock-screen elapsed + remaining reflect the playback speed the way the app
+                // does (e.g. 2h of audio at 1.5x shows ~1h20m left). `defaultRate` is the user's selected
+                // speed and stays constant across play/pause, so it is the right divisor. Publishing the
+                // transport rate as rate/speed (1.0 while playing, 0 while paused) keeps the system's
+                // extrapolation at one wall-second per second; the bar fill is unchanged because elapsed
+                // and duration scale together. Seeks are un-scaled in AudioPlayer's changePlaybackPosition
+                // handler. See PlaybackSpeedModal for the app-side calculation.
+                let speed = defaultRate > 0 ? Double(defaultRate) : 1.0
+                self.nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration / speed
+                self.nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime / speed
+                self.nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = Double(rate) / speed
+                self.nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
                     
                 
                 if let chapterName = chapterName, let chapterNumber = chapterNumber, let chapterCount = chapterCount {
