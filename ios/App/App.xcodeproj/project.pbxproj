@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		06D1489326E2CDDD265A20C6 /* PlaybackSessionMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89498D073F228221C043E0FB /* PlaybackSessionMappingTests.swift */; };
+		1F98F6925ED264465870A7C0 /* NowPlayingInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AA294D8BBB3BA9E6A46B8D4 /* NowPlayingInfoTests.swift */; };
 		2BF8E1F016838E35D518CA78 /* WidgetSharedCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BFC64D760CA6013CB127B55 /* WidgetSharedCredentials.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		3173814B20D1975CEDC72F97 /* ABSApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF2E2D6EFA283B23454B5312 /* ABSApi.swift */; };
@@ -181,6 +182,7 @@
 		51EEA93F06CDF784E79CF126 /* AudiobookshelfWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookshelfWidget.swift; sourceTree = "<group>"; };
 		5AA65F0ECB3865F4DA06469E /* AudiobookshelfWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = AudiobookshelfWidget.entitlements; path = AudiobookshelfWidget/AudiobookshelfWidget.entitlements; sourceTree = "<group>"; };
 		5BFC64D760CA6013CB127B55 /* WidgetSharedCredentials.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetSharedCredentials.swift; path = Shared/util/widget/WidgetSharedCredentials.swift; sourceTree = "<group>"; };
+		6AA294D8BBB3BA9E6A46B8D4 /* NowPlayingInfoTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NowPlayingInfoTests.swift; path = AudiobookshelfUnitTests/Shared/util/NowPlayingInfoTests.swift; sourceTree = "<group>"; };
 		6CE94268991F6119E32551AC /* WidgetCommandReceiver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetCommandReceiver.swift; path = App/widget/WidgetCommandReceiver.swift; sourceTree = "<group>"; };
 		6F2516262E68DA3000F40541 /* LogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntry.swift; sourceTree = "<group>"; };
 		6F8E0E9C70DFEF087FEC3BAD /* App.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = App.entitlements; path = App/App.entitlements; sourceTree = "<group>"; };
@@ -403,6 +405,7 @@
 				4F79D8D916FAE549AF0BBF64 /* BrowseLibrary.swift */,
 				FD6CA748237B31A41EECD113 /* BrowseLibraryTests.swift */,
 				4E05CED6EF800384B58EC011 /* CarPlayLibraryController.swift */,
+				6AA294D8BBB3BA9E6A46B8D4 /* NowPlayingInfoTests.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -825,6 +828,7 @@
 				D46E266A8E077117FF127045 /* BrowseItemTests.swift in Sources */,
 				F99A7DC729EC057FBEE18152 /* BrowseSectionTests.swift in Sources */,
 				3FAA26AB15AD88D500957559 /* BrowseLibraryTests.swift in Sources */,
+				1F98F6925ED264465870A7C0 /* NowPlayingInfoTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

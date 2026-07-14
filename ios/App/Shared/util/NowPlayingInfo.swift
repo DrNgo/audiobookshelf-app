@@ -93,7 +93,9 @@ class NowPlayingInfo {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
     
-    private func setMetadata(artwork: MPMediaItemArtwork?, metadata: NowPlayingMetadata?) {
+    // internal (not private) so unit tests can exercise the published metadata directly,
+    // without going through setSessionMetadata's Realm-backed coverUrl lookup.
+    func setMetadata(artwork: MPMediaItemArtwork?, metadata: NowPlayingMetadata?) {
         if metadata == nil {
             return
         }
@@ -106,7 +108,10 @@ class NowPlayingInfo {
         
         nowPlayingInfo[MPNowPlayingInfoPropertyExternalContentIdentifier] = metadata!.id
         nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = false
-        nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = "hls"
+        // MPNowPlayingInfoPropertyMediaType expects an MPNowPlayingInfoMediaType raw value (a number),
+        // not a string. A string is type-mismatched and the system treats the media type as .none,
+        // which can change how CarPlay / the lock screen lay out the Now Playing template.
+        nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         
         nowPlayingInfo[MPMediaItemPropertyTitle] = metadata!.title
         nowPlayingInfo[MPMediaItemPropertyArtist] = metadata!.author ?? "unknown"
