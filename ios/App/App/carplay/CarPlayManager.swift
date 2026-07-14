@@ -17,7 +17,6 @@ final class CarPlayManager: NSObject {
     private let homeTemplate = CPListTemplate(title: "Home", sections: [])
 
     private var libraryController: CarPlayLibraryController?
-    private var searchController: CarPlaySearchController?
 
     /// The library whose "Recently Added" shelf feeds Home. Defaults to the first book library.
     var activeLibraryId: String?
@@ -32,14 +31,15 @@ final class CarPlayManager: NSObject {
 
     func start() {
         let library = CarPlayLibraryController(manager: self)
-        let search = CarPlaySearchController(manager: self)
         self.libraryController = library
-        self.searchController = search
 
         homeTemplate.tabTitle = "Home"
         homeTemplate.tabImage = UIImage(systemName: "house")
         tabBar.delegate = self
-        tabBar.updateTemplates([homeTemplate, library.template, search.template])
+        // No Search tab: CarPlay audio apps are not permitted to use CPSearchTemplate (the allowed
+        // set is CPTabBar/List/Grid/VoiceControl/Alert/ActionSheet/NowPlaying). On-screen typed
+        // search is impossible here — voice search is handled by the Siri App Intents path instead.
+        tabBar.updateTemplates([homeTemplate, library.template])
         interfaceController.setRootTemplate(tabBar, animated: false, completion: nil)
         rebuildHome()
     }
