@@ -169,6 +169,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 // none, so this reproduces the same minimal setup (window sized to the scene, rootViewController
 // from Main.storyboard's initial view controller, made key and visible) that
 // application(_:didFinishLaunchingWithOptions:) + UIMainStoryboardFile used to provide implicitly.
+//
+// Just as important: once a UIWindowSceneDelegate exists, UIKit routes URL-open and NSUserActivity
+// events to the SCENE delegate instead of AppDelegate's application(_:open:), application(_:continue:),
+// and the didFinishLaunchingWithOptions launchOptions[.url] path. Those AppDelegate handlers all
+// forward to Capacitor via ApplicationDelegateProxy so the web layer can act (widget audiobookshelf://
+// resume incl. cold launch — #541, OAuth login redirect, Universal Links). To keep that behavior we
+// forward the equivalent scene callbacks here, through the same proxy, passing UIApplication.shared.
 class DefaultSceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
@@ -179,6 +186,26 @@ class DefaultSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = storyboard.instantiateInitialViewController()
         window.makeKeyAndVisible()
         self.window = window
+
+        // Cold launch via custom scheme (e.g. the widget's audiobookshelf://resume, #541) or via a
+        // Universal Link now delivers here in connectionOptions rather than AppDelegate's launchOptions.
+        if let urlContext = connectionOptions.urlContexts.first {
+            _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, open: urlContext.url, options: [:])
+        }
+        for activity in connectionOptions.userActivities {
+            _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: activity) { _ in }
+        }
+    }
+
+    // Warm open of a custom-scheme URL (app already running) — was AppDelegate application(_:open:).
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        guard let urlContext = URLContexts.first else { return }
+        _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, open: urlContext.url, options: [:])
+    }
+
+    // Continuity / Universal Links while running — was AppDelegate application(_:continue:).
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: userActivity) { _ in }
     }
 }
 
