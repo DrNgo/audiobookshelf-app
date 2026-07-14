@@ -71,4 +71,30 @@ final class BrowseCacheTests: XCTestCase {
         XCTAssertEqual(a, [1])
         XCTAssertEqual(b, [2])
     }
+
+    /// Two concurrent misses for the SAME key coalesce onto one fetch (429 prevention), and both
+    /// callers receive the shared result.
+    func testConcurrentMissesForSameKeyShareOneFetch() async {
+        let cache = BrowseCache(ttl: 30)
+        let counter = FetchCounter()
+        async let a = cache.read("k", now: t0) { await counter.run() }
+        async let b = cache.read("k", now: t0) { await counter.run() }
+        let first = await a
+        let second = await b
+        XCTAssertEqual(first, [1])
+        XCTAssertEqual(second, [1])
+        let count = await counter.count
+        XCTAssertEqual(count, 1, "concurrent misses for the same key must share a single fetch")
+    }
+}
+
+/// Counts fetch invocations and suspends briefly so a concurrent read() for the same key reaches
+/// the in-flight coalescing path before this fetch resolves.
+private actor FetchCounter {
+    private(set) var count = 0
+    func run() async -> [Int]? {
+        count += 1
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        return [1]
+    }
 }

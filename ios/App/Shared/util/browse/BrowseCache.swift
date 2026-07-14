@@ -24,21 +24,36 @@ actor BrowseCache {
 
     let ttl: TimeInterval
     private var entries: [String: (value: Any, storedAt: Date)] = [:]
+    /// Fetches currently in flight, keyed by cache key. Concurrent misses for the same key share the
+    /// one request instead of each hitting the server (which the rate limiter punishes with a 429).
+    private var inFlight: [String: Task<Any?, Never>] = [:]
 
     init(ttl: TimeInterval = 30) {
         self.ttl = ttl
     }
 
-    /// Return the cached value for `key` when it is still fresh; otherwise run `fetch`. On success
-    /// the value is cached and returned; on failure (nil) the last-good value is returned (even if
-    /// stale), or nil if there has never been a success for this key.
-    func read<T>(_ key: String, now: Date = Date(), fetch: () async -> T?) async -> T? {
+    /// Return the cached value for `key` when it is still fresh; otherwise run `fetch` (coalescing
+    /// with any fetch already in flight for the same key). On success the value is cached and
+    /// returned; on failure (nil) the last-good value is returned (even if stale), or nil if there
+    /// has never been a success for this key.
+    func read<T>(_ key: String, now: Date = Date(), fetch: @escaping () async -> T?) async -> T? {
         if let entry = entries[key], now.timeIntervalSince(entry.storedAt) < ttl, let value = entry.value as? T {
             return value
         }
-        if let fetched = await fetch() {
-            entries[key] = (fetched, now)
-            return fetched
+        // Coalesce concurrent misses for the same key onto a single fetch. `.map { $0 as Any }`
+        // erases T to Any without nesting the optional, so a nil (failure) stays nil.
+        let fetched: Any?
+        if let existing = inFlight[key] {
+            fetched = await existing.value
+        } else {
+            let task = Task<Any?, Never> { await fetch().map { $0 as Any } }
+            inFlight[key] = task
+            fetched = await task.value
+            inFlight[key] = nil
+        }
+        if let value = fetched as? T {
+            entries[key] = (value, now)
+            return value
         }
         return entries[key]?.value as? T
     }

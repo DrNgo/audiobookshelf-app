@@ -12,11 +12,18 @@ import Foundation
 import ABSApiClient
 
 enum BrowseApi {
+    /// Scope every cache key to the active server connection so a failed fetch after a server switch
+    /// can't hand back the previous server's last-good data. Falls back to a stable token when no
+    /// server is configured (the fetch fails anyway, so nothing is cached under it).
+    private static func cacheKey(_ suffix: String) -> String {
+        "\(Store.serverConfig?.id ?? "none"):\(suffix)"
+    }
+
     /// "Continue Listening" — the user's in-progress items (server, user-wide).
     /// Cached: a burst of CarPlay refreshes reuses the last result instead of re-hitting the server,
     /// and a failed fetch keeps the last-good list rather than blanking the shelf. See BrowseCache.
     static func continueListening(limit: Int = 25) async -> [BrowseItem] {
-        await BrowseCache.shared.read("continueListening") {
+        await BrowseCache.shared.read(cacheKey("continueListening")) {
             guard let config = ABSClientProvider.config else { return nil }
             guard let data = await ABSApiClient.fetchItemsInProgressData(config: config, limit: limit) else { return nil }
             return BrowseItem.fromItemsInProgress(data: data, serverAddress: Store.serverConfig?.address)
@@ -26,7 +33,7 @@ enum BrowseApi {
     /// "Recently Added" — the recently-added shelf of a library's personalized view (server).
     /// Cached per library id (see continueListening for the why).
     static func recentlyAdded(libraryId: String, limit: Int = 10) async -> [BrowseItem] {
-        await BrowseCache.shared.read("recentlyAdded:\(libraryId)") {
+        await BrowseCache.shared.read(cacheKey("recentlyAdded:\(libraryId)")) {
             guard let config = ABSClientProvider.config else { return nil }
             guard let data = await ABSApiClient.fetchPersonalizedShelvesData(config: config, libraryId: libraryId, limit: limit) else { return nil }
             return BrowseItem.fromPersonalizedRecentlyAdded(data: data, serverAddress: Store.serverConfig?.address)
@@ -52,7 +59,7 @@ enum BrowseApi {
     /// Cached: the Library tab and firstBookLibraryId share this single /api/libraries read, and a
     /// failed fetch preserves the last-good list rather than emptying the tab. See BrowseCache.
     static func bookLibraries() async -> [BrowseLibrary] {
-        await BrowseCache.shared.read("libraries") {
+        await BrowseCache.shared.read(cacheKey("libraries")) {
             guard let config = ABSClientProvider.config else { return nil }
             guard let data = await ABSApiClient.fetchLibrariesData(config: config) else { return nil }
             return BrowseLibrary.fromLibraries(data: data)
