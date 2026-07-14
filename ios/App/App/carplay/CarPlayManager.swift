@@ -112,11 +112,27 @@ final class CarPlayManager: NSObject {
         return row
     }
 
+    /// Sized cover images keyed by cover URL. Home rebuilds recreate rows frequently (scene
+    /// reactivation, tab/library taps); without this, every rebuild re-requests every cover, and
+    /// the cover endpoint is rate-limited — a burst returns 429 and the covers blank out. Caching
+    /// the sized image means a cover is fetched at most once and reused thereafter.
+    private static let coverCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 256
+        return cache
+    }()
+
     private func loadCover(_ item: BrowseItem, into row: CPListItem) {
         guard let url = item.coverURL else { return }
+        let key = url.absoluteString as NSString
+        if let cached = Self.coverCache.object(forKey: key) {
+            row.setImage(cached)
+            return
+        }
         ApiClient.getData(from: url) { [weak self] image in
-            guard let image = image else { return }
-            let sized = self?.sizedCover(image) ?? image
+            guard let self, let image = image else { return }
+            let sized = self.sizedCover(image)
+            Self.coverCache.setObject(sized, forKey: key)
             DispatchQueue.main.async { row.setImage(sized) }
         }
     }
