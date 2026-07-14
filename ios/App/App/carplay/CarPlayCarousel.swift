@@ -36,6 +36,11 @@ enum CarPlayCarousel {
             completion()
             onSelect(index)
         }
+        // Tapping a cover fires listImageRowHandler; tapping the cell/title area fires `handler`.
+        // Without a handler, CarPlay treats the title tap as a pending selection and shows a spinner
+        // that never resolves. The shelf title isn't a navigation target, so make it a no-op that
+        // immediately completes.
+        row.handler = { _, completion in completion() }
         return row
     }
 
