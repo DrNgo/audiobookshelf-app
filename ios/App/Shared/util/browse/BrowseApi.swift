@@ -13,17 +13,24 @@ import ABSApiClient
 
 enum BrowseApi {
     /// "Continue Listening" — the user's in-progress items (server, user-wide).
+    /// Cached: a burst of CarPlay refreshes reuses the last result instead of re-hitting the server,
+    /// and a failed fetch keeps the last-good list rather than blanking the shelf. See BrowseCache.
     static func continueListening(limit: Int = 25) async -> [BrowseItem] {
-        guard let config = ABSClientProvider.config else { return [] }
-        guard let data = await ABSApiClient.fetchItemsInProgressData(config: config, limit: limit) else { return [] }
-        return BrowseItem.fromItemsInProgress(data: data, serverAddress: Store.serverConfig?.address)
+        await BrowseCache.shared.read("continueListening") {
+            guard let config = ABSClientProvider.config else { return nil }
+            guard let data = await ABSApiClient.fetchItemsInProgressData(config: config, limit: limit) else { return nil }
+            return BrowseItem.fromItemsInProgress(data: data, serverAddress: Store.serverConfig?.address)
+        } ?? []
     }
 
     /// "Recently Added" — the recently-added shelf of a library's personalized view (server).
+    /// Cached per library id (see continueListening for the why).
     static func recentlyAdded(libraryId: String, limit: Int = 10) async -> [BrowseItem] {
-        guard let config = ABSClientProvider.config else { return [] }
-        guard let data = await ABSApiClient.fetchPersonalizedShelvesData(config: config, libraryId: libraryId, limit: limit) else { return [] }
-        return BrowseItem.fromPersonalizedRecentlyAdded(data: data, serverAddress: Store.serverConfig?.address)
+        await BrowseCache.shared.read("recentlyAdded:\(libraryId)") {
+            guard let config = ABSClientProvider.config else { return nil }
+            guard let data = await ABSApiClient.fetchPersonalizedShelvesData(config: config, libraryId: libraryId, limit: limit) else { return nil }
+            return BrowseItem.fromPersonalizedRecentlyAdded(data: data, serverAddress: Store.serverConfig?.address)
+        } ?? []
     }
 
     /// "Downloads" — books available offline on the device. Always works (no network).
@@ -34,21 +41,22 @@ enum BrowseApi {
     }
 
     /// The id of the user's first book library — used to scope the "Recently Added" shelf.
-    /// Nil if there is no book library or the request fails.
+    /// Derived from the cached `bookLibraries()` so it shares one request (and one cache entry)
+    /// with the Library tab instead of firing its own /api/libraries call. Nil if there is no book
+    /// library or the request fails.
     static func firstBookLibraryId() async -> String? {
-        guard let config = ABSClientProvider.config else { return nil }
-        guard let data = await ABSApiClient.fetchLibrariesData(config: config) else { return nil }
-        struct Library: Decodable { let id: String?; let mediaType: String? }
-        struct Response: Decodable { let libraries: [Library]? }
-        guard let resp = try? JSONDecoder().decode(Response.self, from: data) else { return nil }
-        return resp.libraries?.first(where: { $0.mediaType == "book" })?.id
+        await bookLibraries().first?.id
     }
 
     /// The user's book libraries (id + name) for the CarPlay Library tab. [] on failure.
+    /// Cached: the Library tab and firstBookLibraryId share this single /api/libraries read, and a
+    /// failed fetch preserves the last-good list rather than emptying the tab. See BrowseCache.
     static func bookLibraries() async -> [BrowseLibrary] {
-        guard let config = ABSClientProvider.config else { return [] }
-        guard let data = await ABSApiClient.fetchLibrariesData(config: config) else { return [] }
-        return BrowseLibrary.fromLibraries(data: data)
+        await BrowseCache.shared.read("libraries") {
+            guard let config = ABSClientProvider.config else { return nil }
+            guard let data = await ABSApiClient.fetchLibrariesData(config: config) else { return nil }
+            return BrowseLibrary.fromLibraries(data: data)
+        } ?? []
     }
 
     /// Search `libraryId` (or the first book library when nil) for `query` and return matching books.

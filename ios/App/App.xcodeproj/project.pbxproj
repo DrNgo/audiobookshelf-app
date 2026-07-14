@@ -55,6 +55,7 @@
 		6C210EE47F6D2053C29A5E1B /* ABSApiClient in Frameworks */ = {isa = PBXBuildFile; productRef = 73AC33305BA94E0D33A0A657 /* ABSApiClient */; };
 		6D2946D968A29DB738CA5846 /* BrowsePlaybackStarter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBE1050D9643F7625727F898 /* BrowsePlaybackStarter.swift */; };
 		6F2516272E68DA3000F40541 /* LogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F2516262E68DA3000F40541 /* LogEntry.swift */; };
+		82E3ADD5974FF0BD5A30D968 /* BrowseCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22C10589522172DD5BDC8537 /* BrowseCache.swift */; };
 		917477B12A14D896996D00F3 /* BrowseItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A967611962149D188F2193C3 /* BrowseItem.swift */; };
 		9512E5D692562A27835E10A7 /* WidgetPlaybackCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = F15C738FE66AA97A69722BA5 /* WidgetPlaybackCommand.swift */; };
 		9623BF74CEDA408A7218CE82 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD6D77497B12DCD4B351665D /* CarPlaySceneDelegate.swift */; };
@@ -101,6 +102,7 @@
 		F0259D05FFA5C35BD0B484A9 /* AudiobookIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD782D68ADBCDC7149506F9 /* AudiobookIntents.swift */; };
 		F14B2AA1273A8D87B6DB202F /* WidgetCommandReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CE94268991F6119E32551AC /* WidgetCommandReceiver.swift */; };
 		F99A7DC729EC057FBEE18152 /* BrowseSectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34CE56021B80E95679C493A7 /* BrowseSectionTests.swift */; };
+		FC188261350D39C7A2198A90 /* BrowseCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1CD1040FC6379F058F2FAA /* BrowseCacheTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -140,6 +142,7 @@
 		122A7EA32D78DA32E4674564 /* AudiobookshelfWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AudiobookshelfWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		218B0FB8E3CEA98342421D74 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		227FDEA5A7124D6264E47D88 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS14.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		22C10589522172DD5BDC8537 /* BrowseCache.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowseCache.swift; path = Shared/util/browse/BrowseCache.swift; sourceTree = "<group>"; };
 		233CB56FD326F369FEED5390 /* Pods_AudiobookshelfUnitTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_AudiobookshelfUnitTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		2948E135A93F21D1C991A7C1 /* SingleFlight.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SingleFlight.swift; path = Shared/util/absapi/SingleFlight.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
@@ -199,6 +202,7 @@
 		CD6D77497B12DCD4B351665D /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CarPlaySceneDelegate.swift; path = App/carplay/CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
 		D2F7F575384A63F1C47DE984 /* Pods-Audiobookshelf.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.release.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.release.xcconfig"; sourceTree = "<group>"; };
 		DB08EAD34FFAD72481CDE50F /* BrowseSection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowseSection.swift; path = Shared/util/browse/BrowseSection.swift; sourceTree = "<group>"; };
+		DE1CD1040FC6379F058F2FAA /* BrowseCacheTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowseCacheTests.swift; path = AudiobookshelfUnitTests/Shared/util/browse/BrowseCacheTests.swift; sourceTree = "<group>"; };
 		E9D5504528AC1A3900C746DD /* LibraryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryItem.swift; sourceTree = "<group>"; };
 		E9D5504728AC1A7A00C746DD /* MediaType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaType.swift; sourceTree = "<group>"; };
 		E9D5504928AC1AA600C746DD /* Metadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Metadata.swift; sourceTree = "<group>"; };
@@ -406,6 +410,8 @@
 				FD6CA748237B31A41EECD113 /* BrowseLibraryTests.swift */,
 				4E05CED6EF800384B58EC011 /* CarPlayLibraryController.swift */,
 				6AA294D8BBB3BA9E6A46B8D4 /* NowPlayingInfoTests.swift */,
+				22C10589522172DD5BDC8537 /* BrowseCache.swift */,
+				DE1CD1040FC6379F058F2FAA /* BrowseCacheTests.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -814,6 +820,7 @@
 				56763B7F5D013E443327F5BF /* BrowseSection.swift in Sources */,
 				EB64C44804BC8264A0B17072 /* BrowseLibrary.swift in Sources */,
 				C1B26A09D91227E47AE6E6E5 /* CarPlayLibraryController.swift in Sources */,
+				82E3ADD5974FF0BD5A30D968 /* BrowseCache.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -829,6 +836,7 @@
 				F99A7DC729EC057FBEE18152 /* BrowseSectionTests.swift in Sources */,
 				3FAA26AB15AD88D500957559 /* BrowseLibraryTests.swift in Sources */,
 				1F98F6925ED264465870A7C0 /* NowPlayingInfoTests.swift in Sources */,
+				FC188261350D39C7A2198A90 /* BrowseCacheTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
