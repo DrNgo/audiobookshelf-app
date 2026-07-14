@@ -146,6 +146,10 @@ git commit -m "feat(ios): enable com.apple.developer.carplay-audio entitlement (
 ```
 (The pbxproj commit is produced by the skill in Step 2.)
 
+- [ ] **Step 5: Record the device-signing / provisioning follow-up**
+
+The sim ignores provisioning, so Tasks 1 & 5–10 work on the CarPlay Simulator with just Step 1's entitlement. But **device + TestFlight builds will fail to sign** until the granted `com.apple.developer.carplay-audio` entitlement is in the **provisioning profile**. That lives in the fork's fastlane automation, NOT this repo — see the "Device signing / provisioning" appendix at the end of this plan. This step is just to confirm the appendix is read and the follow-up is tracked before anyone cuts a device build; no code change here.
+
 ---
 
 ### Task 3: Section model + item-count capping helper (TDD)
@@ -863,3 +867,37 @@ git commit --allow-empty -m "chore(ios): CarPlay activation + polish verified (b
 **Type consistency:** `BrowseSection`/`BrowseSection.capped` (Task 3) used identically in Task 5. `BrowseLibrary`/`BrowseApi.bookLibraries()` (Task 4) used in Task 6. `CarPlayManager.makeRow` / `interfaceController` / `activeLibraryId` / `rebuildHome()` produced in Task 5, consumed in Tasks 6/7/8. `sizedCover` defined in Task 5, replaced in Task 8. Consistent.
 
 **Known risk to watch during execution:** `CPListTemplate.maximumItemCount` and `CPListItem.maximumImageSize` are static CarPlay APIs — if a target-OS variance surfaces, read them off the live template/`carTraitCollection` instead; the pure capping logic (Task 3) is unaffected. `selectTabTemplateAtIndex` in Task 6 is optional and guarded.
+
+---
+
+## Appendix: Device signing / provisioning (fastlane) — out of this repo
+
+Everything in Tasks 1–10 is verifiable on the **CarPlay Simulator**, which does not check
+provisioning. **Adding `com.apple.developer.carplay-audio` to `App.entitlements` (Task 2) is not
+enough for a device or TestFlight build** — the code-signing step matches the app's entitlements
+against the provisioning profile, and a profile that lacks the entitlement fails with
+*"Provisioning profile doesn't include the com.apple.developer.carplay-audio entitlement."*
+
+This is why the entitlement was originally left inert until Apple granted it — that grant has now
+happened, so the profile can carry it. The remaining work is **not in this codebase**; it lives in
+the fork's fastlane automation (the TestFlight pipeline that builds the DrNgo fork `master` by
+commit SHA). Follow-up, to do before cutting a device build:
+
+1. **Enable the capability on the App ID.** In the Apple Developer portal (or via the granted CarPlay
+   request), confirm the App ID for the release bundle id has the CarPlay (audio) capability enabled.
+2. **Regenerate the provisioning profile** so it includes `com.apple.developer.carplay-audio`.
+   - If fastlane uses **match**: run `fastlane match development` / `match appstore` (or
+     `--force` for the affected app id) to regenerate + re-store the profiles, then let the pipeline
+     pick them up.
+   - If it uses **manual profiles / `get_provisioning_profile`**: regenerate the profile in the
+     portal and update the reference the Fastfile downloads.
+3. **Confirm entitlement propagation in the Fastfile.** The fork's automation already rewrites
+   entitlements at build time (e.g. the App Group override that derives the group id from the bundle
+   id). Verify that step does not strip/overwrite the new `carplay-audio` key — it operates on the
+   same `App.entitlements`, so re-check after the first pipeline run that the built `.ipa`'s embedded
+   entitlements still contain `com.apple.developer.carplay-audio`.
+4. **Smoke-test on a real head unit / device CarPlay** once a TestFlight build signs, since the
+   Simulator can't exercise the entitlement-gated scene instantiation end to end.
+
+Track this as a separate task in the fastlane automation repo — it is intentionally NOT a step in
+this plan because it changes no file under `audiobookshelf-app`.
