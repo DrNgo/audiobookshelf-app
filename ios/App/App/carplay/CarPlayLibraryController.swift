@@ -21,21 +21,25 @@ final class CarPlayLibraryController {
     }
 
     private func reload() {
-        Task {
+        Task { [weak self] in
             let libraries = await BrowseApi.bookLibraries()
-            let items: [CPListItem] = libraries.map { library in
-                let row = CPListItem(text: library.name, detailText: nil)
-                row.handler = { [weak self] _, completion in
-                    completion()
-                    self?.manager?.activeLibraryId = library.id
-                    self?.manager?.rebuildHome()
+            // Build CarPlay template objects on the main thread (CPListItem is main-thread-only).
+            await MainActor.run {
+                guard let self = self else { return }
+                let items: [CPListItem] = libraries.map { library in
+                    let row = CPListItem(text: library.name, detailText: nil)
+                    row.handler = { [weak self] _, completion in
+                        completion()
+                        self?.manager?.activeLibraryId = library.id
+                        self?.manager?.rebuildHome()
+                    }
+                    return row
                 }
-                return row
+                let section = items.isEmpty
+                    ? CPListSection(items: [CPListItem(text: "Libraries unavailable", detailText: nil)])
+                    : CPListSection(items: items)
+                self.template.updateSections([section])
             }
-            let section = items.isEmpty
-                ? CPListSection(items: [CPListItem(text: "Libraries unavailable", detailText: nil)])
-                : CPListSection(items: items)
-            await MainActor.run { self.template.updateSections([section]) }
         }
     }
 }

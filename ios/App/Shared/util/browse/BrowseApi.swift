@@ -51,10 +51,13 @@ enum BrowseApi {
         return BrowseLibrary.fromLibraries(data: data)
     }
 
-    /// Search the first book library for `query` and return matching books. [] on failure/no library.
-    static func search(query: String, limit: Int = 12) async -> [BrowseItem] {
+    /// Search `libraryId` (or the first book library when nil) for `query` and return matching books.
+    /// [] on failure/no library. CarPlay passes the user's active library; App Intents pass nil.
+    static func search(query: String, libraryId: String? = nil, limit: Int = 12) async -> [BrowseItem] {
         guard let config = ABSClientProvider.config else { return [] }
-        guard let libraryId = await firstBookLibraryId() else { return [] }
+        var resolvedLibraryId = libraryId
+        if resolvedLibraryId == nil { resolvedLibraryId = await firstBookLibraryId() }
+        guard let libraryId = resolvedLibraryId else { return [] }
         guard let data = await ABSApiClient.fetchLibrarySearchData(config: config, libraryId: libraryId, query: query, limit: limit) else { return [] }
         return BrowseItem.fromSearch(data: data, serverAddress: Store.serverConfig?.address)
     }

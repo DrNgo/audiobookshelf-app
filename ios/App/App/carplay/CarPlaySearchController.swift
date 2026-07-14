@@ -29,7 +29,6 @@ final class CarPlaySearchController: NSObject, CPSearchTemplateDelegate {
         }
     }
 
-    // Debounce so we don't fire a search per keystroke.
     private var pendingSearch: Task<Void, Never>?
 
     func searchTemplate(_ searchTemplate: CPSearchTemplate,
@@ -38,14 +37,22 @@ final class CarPlaySearchController: NSObject, CPSearchTemplateDelegate {
         pendingSearch?.cancel()
         let query = searchText.trimmingCharacters(in: .whitespaces)
         guard query.count >= 2 else { completionHandler([]); return }
+        let libraryId = manager?.activeLibraryId
         pendingSearch = Task {
-            let results = await BrowseApi.search(query: query)
-            let capped = Array(results.prefix(CPListTemplate.maximumItemCount))
+            // Real debounce: wait a beat; a newer keystroke cancels this before any network work.
+            try? await Task.sleep(nanoseconds: 300_000_000)
             if Task.isCancelled { return }
-            let rows = await MainActor.run {
-                capped.map { self.manager?.makeRow($0) ?? CPListItem(text: $0.title, detailText: $0.author) }
+            let results = await BrowseApi.search(query: query, libraryId: libraryId)
+            let capped = Array(results.prefix(CPListTemplate.maximumItemCount))
+            // Build rows and deliver on the main thread (CPListItem is main-thread-only); re-check
+            // cancellation after the hop so a superseded search never delivers stale results. When
+            // cancelled we simply don't call this completionHandler — the superseding call owns a
+            // fresh handler that CarPlay uses instead.
+            await MainActor.run {
+                if Task.isCancelled { return }
+                let rows = capped.map { self.manager?.makeRow($0) ?? CPListItem(text: $0.title, detailText: $0.author) }
+                completionHandler(rows)
             }
-            completionHandler(rows)
         }
     }
 
