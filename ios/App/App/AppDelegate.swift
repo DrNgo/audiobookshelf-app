@@ -138,6 +138,47 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         backgroundCompletionHandler = completionHandler
     }
 
+    // Adding UIApplicationSceneManifest switches the whole app from the legacy
+    // (non-scene) AppDelegate.window + UIMainStoryboardFile launch path to scene-based
+    // lifecycle. Two attempts black-screened the phone window (confirmed by screenshot +
+    // by `evaluatedApplicationKeyWindow: 0x0` in the system log — no key window was ever set):
+    //   1. A static UIWindowSceneSessionRoleApplication config in Info.plist with
+    //      UISceneStoryboardFile = Main and no delegate class.
+    //   2. Returning a plain UISceneConfiguration (no delegateClass) for the default role here.
+    // Neither triggers UIKit's old "instantiate Main.storyboard into the window automatically"
+    // magic once a scene manifest exists. DefaultSceneDelegate below reproduces that behavior
+    // explicitly, and is only reachable via this dynamic configurationForConnecting hook — the
+    // window role is intentionally NOT declared in Info.plist's UISceneConfigurations.
+    func application(_ application: UIApplication,
+                     configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        if connectingSceneSession.role == .carTemplateApplication {
+            let config = UISceneConfiguration(name: "CarPlay Configuration", sessionRole: connectingSceneSession.role)
+            config.delegateClass = CarPlaySceneDelegate.self
+            return config
+        }
+        let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+        config.delegateClass = DefaultSceneDelegate.self
+        return config
+    }
 
+}
+
+// Backs the phone's default window-scene role. Scene-based apps normally get this behavior for
+// free from a project-template SceneDelegate.swift; this app predates the scene manifest and has
+// none, so this reproduces the same minimal setup (window sized to the scene, rootViewController
+// from Main.storyboard's initial view controller, made key and visible) that
+// application(_:didFinishLaunchingWithOptions:) + UIMainStoryboardFile used to provide implicitly.
+class DefaultSceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        let window = UIWindow(windowScene: windowScene)
+        let storyboard = UIStoryboard(name: "Main", bundle: nil)
+        window.rootViewController = storyboard.instantiateInitialViewController()
+        window.makeKeyAndVisible()
+        self.window = window
+    }
 }
 
