@@ -20,13 +20,13 @@ final class CarPlayLibraryController {
         reload()
     }
 
-    private func reload() {
+    func reload() {
         Task { [weak self] in
             let libraries = await BrowseApi.bookLibraries()
             // Build CarPlay template objects on the main thread (CPListItem is main-thread-only).
             await MainActor.run {
                 guard let self = self else { return }
-                let items: [CPListItem] = libraries.map { library in
+                let items: [CPListItem] = libraries.prefix(CPListTemplate.maximumItemCount).map { library in
                     let row = CPListItem(text: library.name, detailText: nil)
                     row.handler = { [weak self] _, completion in
                         completion()

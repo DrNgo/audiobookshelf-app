@@ -11,7 +11,7 @@
 import CarPlay
 import UIKit
 
-final class CarPlayManager {
+final class CarPlayManager: NSObject {
     let interfaceController: CPInterfaceController
     private let tabBar = CPTabBarTemplate(templates: [])
     private let homeTemplate = CPListTemplate(title: "Home", sections: [])
@@ -27,6 +27,7 @@ final class CarPlayManager {
 
     init(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
+        super.init()
     }
 
     func start() {
@@ -37,9 +38,17 @@ final class CarPlayManager {
 
         homeTemplate.tabTitle = "Home"
         homeTemplate.tabImage = UIImage(systemName: "house")
+        tabBar.delegate = self
         tabBar.updateTemplates([homeTemplate, library.template, search.template])
         interfaceController.setRootTemplate(tabBar, animated: false, completion: nil)
         rebuildHome()
+    }
+
+    /// Re-fetch all server-backed content. Called when the CarPlay scene becomes active again so a
+    /// drive that started offline recovers its Home/Library sections once connectivity returns.
+    func refresh() {
+        rebuildHome()
+        libraryController?.reload()
     }
 
     // MARK: - Home
@@ -48,10 +57,17 @@ final class CarPlayManager {
         homeTask?.cancel()
         homeTask = Task { [weak self] in
             guard let self = self else { return }
-            if self.activeLibraryId == nil { self.activeLibraryId = await BrowseApi.firstBookLibraryId() }
+            // activeLibraryId is mutated from the main actor (Library tab) and read there (Search),
+            // so touch it only via MainActor.run to avoid a data race with this background Task.
+            var libraryId = await MainActor.run { self.activeLibraryId }
+            if libraryId == nil {
+                let first = await BrowseApi.firstBookLibraryId()
+                await MainActor.run { if self.activeLibraryId == nil { self.activeLibraryId = first } }
+                libraryId = first
+            }
             let continueListening = await BrowseApi.continueListening()
             var recentlyAdded: [BrowseItem] = []
-            if let libraryId = self.activeLibraryId {
+            if let libraryId = libraryId {
                 recentlyAdded = await BrowseApi.recentlyAdded(libraryId: libraryId)
             }
             let downloads = BrowseApi.downloads()
@@ -120,5 +136,18 @@ final class CarPlayManager {
         format.scale = interfaceController.carTraitCollection.displayScale
         let renderer = UIGraphicsImageRenderer(size: maxPoints, format: format)
         return renderer.image { _ in square.draw(in: CGRect(origin: .zero, size: maxPoints)) }
+    }
+}
+
+extension CarPlayManager: CPTabBarTemplateDelegate {
+    /// Re-fetch the tapped tab. This is the driver's manual recovery path: if a server source was
+    /// offline at CarPlay-connect time and later came back, tapping Home or Library reloads it.
+    func tabBarTemplate(_ tabBarTemplate: CPTabBarTemplate, didSelect selectedTemplate: CPTemplate) {
+        if selectedTemplate === homeTemplate {
+            rebuildHome()
+        } else if selectedTemplate === libraryController?.template {
+            libraryController?.reload()
+        }
+        // The Search tab has nothing to prefetch.
     }
 }

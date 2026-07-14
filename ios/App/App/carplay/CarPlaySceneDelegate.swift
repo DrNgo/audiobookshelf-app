@@ -13,6 +13,7 @@ import CarPlay
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var interfaceController: CPInterfaceController?
     private var manager: CarPlayManager?
+    private var didActivateOnce = false
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene,
                                   didConnect interfaceController: CPInterfaceController) {
@@ -20,6 +21,13 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         let manager = CarPlayManager(interfaceController: interfaceController)
         self.manager = manager
         manager.start()
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        // start() already loaded on connect; refresh only on SUBSEQUENT activations (e.g. returning
+        // to the app after the drive regained signal) so offline-at-connect empty sections recover.
+        guard didActivateOnce else { didActivateOnce = true; return }
+        manager?.refresh()
     }
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene,

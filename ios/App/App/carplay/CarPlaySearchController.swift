@@ -38,7 +38,7 @@ final class CarPlaySearchController: NSObject, CPSearchTemplateDelegate {
         let query = searchText.trimmingCharacters(in: .whitespaces)
         guard query.count >= 2 else { completionHandler([]); return }
         let libraryId = manager?.activeLibraryId
-        pendingSearch = Task {
+        pendingSearch = Task { [weak self] in
             // Real debounce: wait a beat; a newer keystroke cancels this before any network work.
             try? await Task.sleep(nanoseconds: 300_000_000)
             if Task.isCancelled { return }
@@ -50,7 +50,7 @@ final class CarPlaySearchController: NSObject, CPSearchTemplateDelegate {
             // fresh handler that CarPlay uses instead.
             await MainActor.run {
                 if Task.isCancelled { return }
-                let rows = capped.map { self.manager?.makeRow($0) ?? CPListItem(text: $0.title, detailText: $0.author) }
+                let rows = capped.map { self?.manager?.makeRow($0) ?? CPListItem(text: $0.title, detailText: $0.author) }
                 completionHandler(rows)
             }
         }
