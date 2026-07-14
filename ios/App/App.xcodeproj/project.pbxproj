@@ -56,6 +56,7 @@
 		6D2946D968A29DB738CA5846 /* BrowsePlaybackStarter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBE1050D9643F7625727F898 /* BrowsePlaybackStarter.swift */; };
 		6F2516272E68DA3000F40541 /* LogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F2516262E68DA3000F40541 /* LogEntry.swift */; };
 		82E3ADD5974FF0BD5A30D968 /* BrowseCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22C10589522172DD5BDC8537 /* BrowseCache.swift */; };
+		878E4A95571012F2A512B0C5 /* CarPlayCarousel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AF9B17C84D44C3E392C7B62 /* CarPlayCarousel.swift */; };
 		917477B12A14D896996D00F3 /* BrowseItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A967611962149D188F2193C3 /* BrowseItem.swift */; };
 		9512E5D692562A27835E10A7 /* WidgetPlaybackCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = F15C738FE66AA97A69722BA5 /* WidgetPlaybackCommand.swift */; };
 		9623BF74CEDA408A7218CE82 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD6D77497B12DCD4B351665D /* CarPlaySceneDelegate.swift */; };
@@ -189,6 +190,7 @@
 		6CE94268991F6119E32551AC /* WidgetCommandReceiver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetCommandReceiver.swift; path = App/widget/WidgetCommandReceiver.swift; sourceTree = "<group>"; };
 		6F2516262E68DA3000F40541 /* LogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntry.swift; sourceTree = "<group>"; };
 		6F8E0E9C70DFEF087FEC3BAD /* App.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = App.entitlements; path = App/App.entitlements; sourceTree = "<group>"; };
+		7AF9B17C84D44C3E392C7B62 /* CarPlayCarousel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CarPlayCarousel.swift; path = App/carplay/CarPlayCarousel.swift; sourceTree = "<group>"; };
 		89498D073F228221C043E0FB /* PlaybackSessionMappingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PlaybackSessionMappingTests.swift; path = AudiobookshelfUnitTests/Shared/util/absapi/PlaybackSessionMappingTests.swift; sourceTree = "<group>"; };
 		8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Audiobookshelf.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		9084D29DAAE715B5071C3123 /* CarPlayManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CarPlayManager.swift; path = App/carplay/CarPlayManager.swift; sourceTree = "<group>"; };
@@ -412,6 +414,7 @@
 				6AA294D8BBB3BA9E6A46B8D4 /* NowPlayingInfoTests.swift */,
 				22C10589522172DD5BDC8537 /* BrowseCache.swift */,
 				DE1CD1040FC6379F058F2FAA /* BrowseCacheTests.swift */,
+				7AF9B17C84D44C3E392C7B62 /* CarPlayCarousel.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -821,6 +824,7 @@
 				EB64C44804BC8264A0B17072 /* BrowseLibrary.swift in Sources */,
 				C1B26A09D91227E47AE6E6E5 /* CarPlayLibraryController.swift in Sources */,
 				82E3ADD5974FF0BD5A30D968 /* BrowseCache.swift in Sources */,
+				878E4A95571012F2A512B0C5 /* CarPlayCarousel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
