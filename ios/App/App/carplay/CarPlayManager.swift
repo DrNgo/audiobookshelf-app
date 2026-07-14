@@ -2,10 +2,10 @@
 //  CarPlayManager.swift
 //  App
 //
-//  Builds and drives the CarPlay UI: a tab bar with Home (Continue Listening / Recently Added /
-//  Downloads), Library (switch which server library feeds Recently Added), and Search. Server
-//  sections are best-effort — offline they are omitted, leaving the always-available Downloads
-//  section. All lists honor CPListTemplate.maximumItemCount.
+//  Builds and drives the CarPlay UI: Home is the root (Continue Listening / Recently Added /
+//  Downloads), with a top-bar library-picker button that pushes the library list to switch which
+//  server library feeds Recently Added. Server sections are best-effort — offline they are omitted,
+//  leaving the always-available Downloads section.
 //
 
 import CarPlay
@@ -13,7 +13,6 @@ import UIKit
 
 final class CarPlayManager: NSObject {
     let interfaceController: CPInterfaceController
-    private let tabBar = CPTabBarTemplate(templates: [])
     private let homeTemplate = CPListTemplate(title: "Home", sections: [])
 
     private var libraryController: CarPlayLibraryController?
@@ -33,22 +32,31 @@ final class CarPlayManager: NSObject {
         let library = CarPlayLibraryController(manager: self)
         self.libraryController = library
 
-        homeTemplate.tabTitle = "Home"
-        homeTemplate.tabImage = UIImage(systemName: "house")
-        tabBar.delegate = self
-        // No Search tab: CarPlay audio apps are not permitted to use CPSearchTemplate (the allowed
-        // set is CPTabBar/List/Grid/VoiceControl/Alert/ActionSheet/NowPlaying). On-screen typed
-        // search is impossible here — voice search is handled by the Siri App Intents path instead.
-        tabBar.updateTemplates([homeTemplate, library.template])
-        interfaceController.setRootTemplate(tabBar, animated: false, completion: nil)
+        homeTemplate.trailingNavigationBarButtons = [
+            CPBarButton(image: UIImage(systemName: "books.vertical") ?? UIImage()) { [weak self] _ in
+                self?.presentLibraryPicker()
+            }
+        ]
+        interfaceController.setRootTemplate(homeTemplate, animated: false, completion: nil)
         rebuildHome()
     }
 
+    /// Push the library picker on top of Home. Selecting a library pops back (see CarPlayLibraryController).
+    func presentLibraryPicker() {
+        guard let library = libraryController else { return }
+        // Guard against double-taps re-pushing the same template.
+        guard interfaceController.topTemplate !== library.template else { return }
+        library.reload()
+        interfaceController.pushTemplate(library.template, animated: true) { ok, error in
+            if !ok { AbsLogger.error(message: "CarPlay: pushTemplate(library) failed: \(String(describing: error))") }
+        }
+    }
+
     /// Re-fetch all server-backed content. Called when the CarPlay scene becomes active again so a
-    /// drive that started offline recovers its Home/Library sections once connectivity returns.
+    /// drive that started offline recovers its Home sections once connectivity returns. The library
+    /// picker reloads itself when opened, so only Home needs refreshing here.
     func refresh() {
         rebuildHome()
-        libraryController?.reload()
     }
 
     // MARK: - Home
@@ -152,18 +160,5 @@ final class CarPlayManager: NSObject {
         format.scale = interfaceController.carTraitCollection.displayScale
         let renderer = UIGraphicsImageRenderer(size: maxPoints, format: format)
         return renderer.image { _ in square.draw(in: CGRect(origin: .zero, size: maxPoints)) }
-    }
-}
-
-extension CarPlayManager: CPTabBarTemplateDelegate {
-    /// Re-fetch the tapped tab. This is the driver's manual recovery path: if a server source was
-    /// offline at CarPlay-connect time and later came back, tapping Home or Library reloads it.
-    func tabBarTemplate(_ tabBarTemplate: CPTabBarTemplate, didSelect selectedTemplate: CPTemplate) {
-        if selectedTemplate === homeTemplate {
-            rebuildHome()
-        } else if selectedTemplate === libraryController?.template {
-            libraryController?.reload()
-        }
-        // The Search tab has nothing to prefetch.
     }
 }
