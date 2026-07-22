@@ -36,3 +36,15 @@ struct TrackPlacement: Equatable {
     /// Seconds from the start of this track's file.
     let offsetInTrack: Double
 }
+
+/// One contiguous unit of work for the engine. Never spans more than one file.
+struct TranscriptionRequest: Equatable {
+    let localFileId: String
+    /// Seconds from the start of the file to begin reading.
+    let offsetInTrack: Double
+    /// Seconds of audio to read.
+    let duration: Double
+    /// The book-global time corresponding to `offsetInTrack`, used to shift
+    /// file-relative recognizer timings back into book time.
+    let bookOffset: Double
+}

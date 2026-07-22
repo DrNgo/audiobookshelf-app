@@ -48,4 +48,72 @@ final class CaptionTimelineTests: XCTestCase {
     func testEmptyTrackListReturnsNil() {
         XCTAssertNil(CaptionTimeline.placement(forBookTime: 10, tracks: []))
     }
+
+    private func seg(_ start: Double, _ end: Double) -> CaptionSegment {
+        CaptionSegment(start: start, end: end, text: "x",
+                       words: [CaptionWord(start: start, end: end, text: "x")])
+    }
+
+    // MARK: coveredUntil
+
+    func testCoveredUntilReturnsPlayheadWhenNothingCovers() {
+        XCTAssertEqual(CaptionTimeline.coveredUntil(from: 50, segments: [seg(200, 210)]), 50, accuracy: 0.001)
+    }
+
+    func testCoveredUntilFollowsContiguousRun() {
+        let segs = [seg(40, 50), seg(50, 60), seg(60, 70)]
+        XCTAssertEqual(CaptionTimeline.coveredUntil(from: 45, segments: segs), 70, accuracy: 0.001)
+    }
+
+    // A gap larger than the join tolerance stops the run.
+    func testCoveredUntilStopsAtGap() {
+        let segs = [seg(40, 50), seg(58, 70)]
+        XCTAssertEqual(CaptionTimeline.coveredUntil(from: 45, segments: segs), 50, accuracy: 0.001)
+    }
+
+    // Sub-second silences between segments are normal speech, not gaps.
+    func testCoveredUntilToleratesSmallGaps() {
+        let segs = [seg(40, 50), seg(50.4, 70)]
+        XCTAssertEqual(CaptionTimeline.coveredUntil(from: 45, segments: segs), 70, accuracy: 0.001)
+    }
+
+    func testCoveredUntilHandlesUnsortedSegments() {
+        let segs = [seg(60, 70), seg(40, 50), seg(50, 60)]
+        XCTAssertEqual(CaptionTimeline.coveredUntil(from: 45, segments: segs), 70, accuracy: 0.001)
+    }
+
+    // MARK: nextRequest
+
+    func testNextRequestFillsFromPlayheadWhenNothingCached() {
+        let r = CaptionTimeline.nextRequest(playhead: 10, segments: [], tracks: tracks, windowAhead: 600)
+        XCTAssertEqual(r?.localFileId, "f0")
+        XCTAssertEqual(r?.offsetInTrack ?? -1, 10, accuracy: 0.001)
+        XCTAssertEqual(r?.bookOffset ?? -1, 10, accuracy: 0.001)
+        // Clipped to the end of track 0 (100s), not the full 600s window.
+        XCTAssertEqual(r?.duration ?? -1, 90, accuracy: 0.001)
+    }
+
+    // The request must never span two files — the engine reads one file at a time.
+    func testNextRequestIsClippedToTrackBoundary() {
+        let r = CaptionTimeline.nextRequest(playhead: 240, segments: [], tracks: tracks, windowAhead: 600)
+        XCTAssertEqual(r?.localFileId, "f1")
+        XCTAssertEqual(r?.offsetInTrack ?? -1, 140, accuracy: 0.001)
+        XCTAssertEqual(r?.duration ?? -1, 10, accuracy: 0.001)
+    }
+
+    func testNextRequestResumesAfterCachedCoverage() {
+        let segs = [seg(10, 20), seg(20, 30)]
+        let r = CaptionTimeline.nextRequest(playhead: 10, segments: segs, tracks: tracks, windowAhead: 600)
+        XCTAssertEqual(r?.bookOffset ?? -1, 30, accuracy: 0.001)
+        XCTAssertEqual(r?.offsetInTrack ?? -1, 30, accuracy: 0.001)
+    }
+
+    func testNextRequestReturnsNilWhenWindowIsFull() {
+        let segs = [seg(10, 700)]
+        XCTAssertNil(CaptionTimeline.nextRequest(playhead: 10, segments: segs, tracks: tracks, windowAhead: 600))
+    }
+
+    func testNextRequestReturnsNilPastEndOfBook() {
+        XCTAssertNil(CaptionTimeline.nextRequest(playhead: 400, segments: [], tracks: tracks, windowAhead: 600))
+    }
 }
