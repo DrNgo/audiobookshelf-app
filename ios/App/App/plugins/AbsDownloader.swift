@@ -70,7 +70,16 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     private let downloadQueueLock = NSLock()
     private var pendingDownloadTasks: [PendingDownload] = []
     private var activeDownloads: [String: ActiveDownload] = [:] // partId -> live state
-    private let maxConcurrentDownloads = 3
+    // EXPERIMENT (2026-07-22): a background URLSession delivered ~0.20 MB/s to each of 3 transfers —
+    // byte-identical totals at every sample, i.e. the system daemon hands out fixed chunks in lockstep —
+    // while the same server serves 30-40 MB/s to a desktop browser. Raising this distinguishes a
+    // PER-TASK throttle (aggregate should scale with concurrency) from a PER-SESSION one (it won't).
+    private let maxConcurrentDownloads = 6
+
+    // Aggregate throughput sampling, so total rate is directly readable rather than summed by hand.
+    private var aggregateBytesWritten: Int64 = 0
+    private var aggregateWindowStart: Date?
+    private var aggregateBytesAtWindowStart: Int64 = 0
     
     
     // MARK: - Download Queue Management
@@ -426,7 +435,23 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         var becameHealthy = false
         var firstByteMessage: String?
         var rateMessage: String?
+        var aggregateMessage: String?
         if var dl = activeDownloads[partId] {
+            // Accumulate before lastBytesWritten is overwritten.
+            let delta = max(0, totalBytesWritten - dl.lastBytesWritten)
+            aggregateBytesWritten += delta
+            if aggregateWindowStart == nil {
+                aggregateWindowStart = now
+                aggregateBytesAtWindowStart = aggregateBytesWritten
+            } else if let windowStart = aggregateWindowStart,
+                      now.timeIntervalSince(windowStart) >= DownloadThroughput.logInterval {
+                let windowBytes = aggregateBytesWritten - aggregateBytesAtWindowStart
+                let rate = DownloadThroughput.megabytesPerSecond(bytes: windowBytes, seconds: now.timeIntervalSince(windowStart))
+                aggregateMessage = "AGGREGATE: \(DownloadThroughput.describeRate(rate)) across \(activeDownloads.count) transfers"
+                aggregateWindowStart = now
+                aggregateBytesAtWindowStart = aggregateBytesWritten
+            }
+
             dl.lastBytesWritten = totalBytesWritten
             dl.lastProgressAt = now
             dl.graceUntil = nil // it's reporting now; it no longer needs the benefit of the doubt
@@ -471,6 +496,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
 
         if let firstByteMessage = firstByteMessage { AbsLogger.info(message: firstByteMessage) }
         if let rateMessage = rateMessage { AbsLogger.info(message: "\(rateMessage) [\(concurrent) transfers active]") }
+        if let aggregateMessage = aggregateMessage { AbsLogger.info(message: aggregateMessage) }
 
         // This task is moving real data, so the connection recovered. Hand the part a fresh retry
         // budget — otherwise a few unrelated blips spread across a multi-hour download add up and kill
