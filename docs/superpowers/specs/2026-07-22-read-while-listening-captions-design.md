@@ -1,7 +1,7 @@
 # Read While Listening — On-Device Live Captions (iOS)
 
 **Date:** 2026-07-22
-**Status:** Design approved, pending implementation plan
+**Status:** Design approved; implementation plan written and revised after external (Codex) review. See `docs/superpowers/plans/2026-07-22-read-while-listening-captions.md`.
 **Platform:** iOS 26+ only
 
 ## Goal
@@ -58,6 +58,14 @@ Established by reading the codebase and the platform docs, not assumed:
 New Swift files live in `ios/App/App/captions/`, following the existing
 `carplay/`, `widget/`, and `shortcuts/` grouping.
 
+> **Implementation note:** the plan supersedes this location. Pure, testable
+> logic (models, timeline, store, scheduler, engine) lives in
+> `ios/App/Shared/util/captions/` — where this repo keeps its other unit-tested
+> logic (`download/`, `browse/`) and where the `AudiobookshelfUnitTests` target
+> mirrors the structure — while only `AbsTranscriber.swift` sits in
+> `ios/App/App/plugins/` with the other plugins. The paths in sections 1–3 below
+> reflect the original spec; follow the plan's paths when building.
+
 Five units. The two boundaries that matter: the scheduler never references
 `SpeechTranscriber` types, and the engine never references Realm.
 
@@ -102,8 +110,12 @@ The sliding-window brain, and the only unit aware of audiobook structure.
 
 Capacitor surface, nothing more.
 
-- **Methods:** `enable`, `disable`, `getSegments`, `isSupported`
+- **Methods:** `enable`, `updateTime`, `disable`, `isSupported`
 - **Events:** `onCaptionSegments`, `onCaptionStatus`
+
+(`updateTime` replaced the originally-planned `getSegments`: segments are pushed
+to the WebView via the `onCaptionSegments` event, so a pull method is unused,
+while the plugin does need per-tick playhead updates to advance/seek the window.)
 
 ### 5. `components/player/CaptionPanel.vue` (new)
 

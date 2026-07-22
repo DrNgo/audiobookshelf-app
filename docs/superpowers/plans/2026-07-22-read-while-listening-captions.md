@@ -23,7 +23,9 @@
 
 ### Procedure A — Registering a new Swift file with the Xcode targets
 
-Every new Swift file must be added to a target or it will not compile, and tests will fail with "cannot find X in scope". Source files go in the `App` target; test files go in `AudiobookshelfUnitTests`.
+Every new Swift file must be added to a target or it will not compile, and tests will fail with "cannot find X in scope".
+
+**Target names vs the scheme:** the shared *scheme* is `App`, but the native *targets* are named `Audiobookshelf`, `AudiobookshelfWidget`, and `AudiobookshelfUnitTests` — there is no target literally named `App` (verify with `ruby -e 'require "xcodeproj"; p Xcodeproj::Project.open("ios/App/App.xcodeproj").targets.map(&:name)'`). App sources go in the **`Audiobookshelf`** target; test files go in **`AudiobookshelfUnitTests`**. `xcodebuild` still uses `-scheme App`.
 
 ```bash
 cd /Users/michaelngo/projects/audiobookshelf-app/ios/App
@@ -244,7 +246,7 @@ enum CaptionTimeline {
 
 - [ ] **Step 6: Register both source files with the App target**
 
-Follow **Procedure A** twice, with target `App`:
+Follow **Procedure A** twice, with target `Audiobookshelf`:
 - `Shared/util/captions/CaptionModels.swift`
 - `Shared/util/captions/CaptionTimeline.swift`
 
@@ -622,7 +624,7 @@ final class CaptionStore {
 
 - [ ] **Step 5: Register the source file with the App target**
 
-Follow **Procedure A** with `Shared/util/captions/CaptionStore.swift` and target `App`.
+Follow **Procedure A** with `Shared/util/captions/CaptionStore.swift` and target `Audiobookshelf`.
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
@@ -720,11 +722,17 @@ private actor FakeEngine: SegmentProducing {
 
 private actor FailingEngine: SegmentProducing {
     struct Boom: Error {}
+    private var calls = 0
     nonisolated func transcribe(request: TranscriptionRequest, fileURL: URL) -> AsyncThrowingStream<CaptionSegment, Error> {
         AsyncThrowingStream { continuation in
-            continuation.finish(throwing: Boom())
+            Task {
+                await self.bump()
+                continuation.finish(throwing: Boom())
+            }
         }
     }
+    private func bump() { calls += 1 }
+    func callCount() -> Int { calls }
 }
 
 final class CaptionSchedulerTests: XCTestCase {
@@ -888,12 +896,26 @@ final class CaptionSchedulerTests: XCTestCase {
                              "resuming must top the window back up")
     }
 
-    // An engine failure must not wedge the scheduler or crash playback.
-    func testEngineFailureIsSwallowed() async {
-        let scheduler = makeScheduler(engine: FailingEngine(), windowAhead: 60)
+    // An engine failure must not wedge the scheduler, crash playback, or
+    // retry the same failing gap forever.
+    func testEngineFailureIsSwallowedAndNotRetried() async {
+        let engine = FailingEngine()
+        let scheduler = makeScheduler(engine: engine, windowAhead: 60)
         await scheduler.start(at: 0)
         await scheduler.drainForTesting()
-        XCTAssertTrue(true, "reaching here without a crash or hang is the assertion")
+        XCTAssertEqual(await engine.callCount(), 1,
+                       "a failed gap must be attempted once, not retried in a loop")
+
+        // Advancing within the same still-failed region must not re-attempt it.
+        await scheduler.advance(to: 5)
+        await scheduler.drainForTesting()
+        XCTAssertEqual(await engine.callCount(), 1,
+                       "advancing over a known-failed gap must not re-request it")
+
+        // A seek is a fresh chance — the failed offset set is cleared.
+        await scheduler.seek(to: 0)
+        await scheduler.drainForTesting()
+        XCTAssertEqual(await engine.callCount(), 2, "a seek should retry the failed region once")
     }
 }
 
@@ -948,6 +970,17 @@ actor CaptionScheduler {
     private var isSuspended = false
     private var isFilling = false
     private var fillTask: Task<Void, Never>?
+    /// Bumped whenever in-flight work is superseded (seek/stop/suspend). A fill
+    /// task compares its captured generation against this on completion and does
+    /// nothing if it was superseded — this is what makes a stale task's return
+    /// harmless instead of letting it clobber the newer task's handle.
+    private var generation = 0
+    /// Quantised book offsets of requests the engine failed on at the current
+    /// position. Prevents re-requesting the same failing gap forever. Cleared on
+    /// seek, and naturally escaped once the playhead advances past the gap.
+    private var failedOffsets: Set<Int> = []
+
+    private static func offsetKey(_ time: Double) -> Int { Int((time * 1000).rounded()) }
 
     init(tracks: [CaptionTrack],
          fileURLs: [String: URL],
@@ -984,8 +1017,9 @@ actor CaptionScheduler {
         // Clear the latch so the refill trigger is re-evaluated at the new
         // position — a backward seek into cached audio must issue no work.
         isFilling = false
-        fillTask?.cancel()
-        fillTask = nil
+        // A seek is a fresh chance for any region that failed before.
+        failedOffsets.removeAll()
+        supersedeInFlight()
         scheduleFillIfNeeded()
     }
 
@@ -998,8 +1032,7 @@ actor CaptionScheduler {
     func stop() {
         isRunning = false
         isFilling = false
-        fillTask?.cancel()
-        fillTask = nil
+        supersedeInFlight()
     }
 
     /// Backgrounding suspends work; foregrounding resumes it. Captions never
@@ -1007,6 +1040,13 @@ actor CaptionScheduler {
     func suspend() {
         isSuspended = true
         isFilling = false
+        supersedeInFlight()
+    }
+
+    /// Cancel the current fill and bump the generation so its late completion
+    /// is a no-op rather than clobbering whatever replaces it.
+    private func supersedeInFlight() {
+        generation += 1
         fillTask?.cancel()
         fillTask = nil
     }
@@ -1017,8 +1057,9 @@ actor CaptionScheduler {
         scheduleFillIfNeeded()
     }
 
-    /// Test hook: wait for the in-flight fill chain to settle.
-    /// `runFill` clears `fillTask` before finishing, so this drains the whole chain.
+    /// Test hook: wait for the in-flight fill chain to settle. Each non-superseded
+    /// `runFill` either clears `fillTask` or replaces it with the next task before
+    /// its value resolves, so looping until `fillTask == nil` drains the chain.
     func drainForTesting() async {
         while let task = fillTask {
             await task.value
@@ -1043,54 +1084,70 @@ actor CaptionScheduler {
               let request = CaptionTimeline.nextRequest(playhead: playhead,
                                                         segments: segments,
                                                         tracks: tracks,
-                                                        windowAhead: windowAhead)
+                                                        windowAhead: windowAhead),
+              // Don't re-request a gap that already failed at this position.
+              !failedOffsets.contains(Self.offsetKey(request.bookOffset))
         else {
             isFilling = false
             return
         }
 
+        generation += 1
+        let gen = generation
         fillTask = Task { [weak self] in
-            await self?.runFill(request)
+            await self?.runFill(request, generation: gen)
         }
     }
 
-    private func runFill(_ request: TranscriptionRequest) async {
-        defer {
-            fillTask = nil
-            if isRunning { scheduleFillIfNeeded() }
-        }
-
-        guard let fileURL = fileURLs[request.localFileId] else {
-            logger.error("Caption track file missing for id \(request.localFileId)")
-            return
-        }
-
+    private func runFill(_ request: TranscriptionRequest, generation gen: Int) async {
         var produced: [CaptionSegment] = []
-        do {
-            for try await segment in engine.transcribe(request: request, fileURL: fileURL) {
-                if Task.isCancelled { break }
-                produced.append(segment)
+        var failed = false
+
+        if let fileURL = fileURLs[request.localFileId] {
+            do {
+                for try await segment in engine.transcribe(request: request, fileURL: fileURL) {
+                    if Task.isCancelled { break }
+                    produced.append(segment)
+                }
+            } catch {
+                // A failed region is left uncovered rather than retried forever;
+                // playback must never be disturbed by transcription trouble.
+                logger.error("Caption transcription failed at \(request.bookOffset)s: \(error)")
+                failed = true
             }
-        } catch {
-            // A failed region is left uncovered rather than retried forever;
-            // playback must never be disturbed by transcription trouble.
-            logger.error("Caption transcription failed at \(request.bookOffset)s: \(error)")
+        } else {
+            logger.error("Caption track file missing for id \(request.localFileId)")
+            failed = true
+        }
+
+        // Superseded by a seek/stop/suspend (or a newer fill): discard silently,
+        // and do NOT touch fillTask — it now belongs to the newer work.
+        guard gen == generation else { return }
+        fillTask = nil
+
+        if failed {
+            // Record the failure so the same gap isn't retried; leave isFilling
+            // clear so a later advance/seek can re-evaluate.
+            failedOffsets.insert(Self.offsetKey(request.bookOffset))
+            isFilling = false
             return
         }
 
-        guard !produced.isEmpty else { return }
+        if !produced.isEmpty {
+            segments.append(contentsOf: produced)
+            segments.sort { $0.start < $1.start }
+            try? store.append(produced, locale: locale)
+            onSegments(produced)
+        }
 
-        segments.append(contentsOf: produced)
-        segments.sort { $0.start < $1.start }
-        try? store.append(produced, locale: locale)
-        onSegments(produced)
+        if isRunning { scheduleFillIfNeeded() }
     }
 }
 ```
 
 - [ ] **Step 6: Register both source files with the App target**
 
-Follow **Procedure A** twice, with target `App`:
+Follow **Procedure A** twice, with target `Audiobookshelf`:
 - `Shared/util/captions/SegmentProducing.swift`
 - `Shared/util/captions/CaptionScheduler.swift`
 
@@ -1125,7 +1182,7 @@ Message: `feat(ios): sliding-window caption scheduler`
 - Consumes: `SegmentProducing`, `TranscriptionRequest`, `CaptionSegment`, `CaptionWord`
 - Produces: `@available(iOS 26.0, *) actor SpeechTranscriptionEngine: SegmentProducing`, plus `static func isAvailable(locale: Locale) async -> Bool` and `static func prepareModel(locale: Locale) async throws`
 
-**Note on API verification:** this task uses `SpeechAnalyzer`/`SpeechTranscriber`, which are new in iOS 26 and which this plan has not compiled against. Step 1 is a required verification step — do not skip it and do not assume the symbol names below are exact.
+> **⚠️ HARD GATE — read before writing any code.** This task uses `SpeechAnalyzer`/`SpeechTranscriber`, new in iOS 26, which this plan has **not** compiled against. External review (Codex) flagged that several symbol names in the reference code below likely differ from Apple's shipping API. **The code in Step 2 is a structural reference, not verified source.** You MUST complete Step 1 and reconcile every Speech-framework symbol against the actual SDK before the Step 2 code is considered authoritative. Do not treat a green build as proof of correctness until the fixture test (Step 5) and device pass (Task 9) confirm real timed output.
 
 - [ ] **Step 1: Verify the SDK symbols before writing code**
 
@@ -1133,17 +1190,20 @@ Message: `feat(ios): sliding-window caption scheduler`
 xcrun --sdk iphoneos --show-sdk-path
 ```
 
-Then open the Speech framework interface in Xcode (⇧⌘O → `SpeechTranscriber`) and confirm, writing down the real signature for each:
+Open the Speech framework interface in Xcode (⇧⌘O → `SpeechTranscriber`, `SpeechAnalyzer`, `AnalyzerInput`, `AssetInventory`) and also the WWDC25 sample ("Bring advanced speech-to-text to your app with SpeechAnalyzer"). For each row, write down the **actual** signature; the two columns are the candidates seen in the wild — pick whichever the SDK confirms, or a third if neither matches:
 
-1. `SpeechTranscriber.init(locale:transcriptionOptions:reportingOptions:attributeOptions:)`
-2. `SpeechTranscriber.supportedLocales` — is it `static var` and is it `async`?
-3. `AssetInventory.assetInstallationRequest(supporting:)` and the method that performs the download
-4. `SpeechAnalyzer.init(modules:)` and the method that consumes an input sequence
-5. `SpeechTranscriber.results` element type, and how to read `.audioTimeRange` off its `AttributedString` runs
-6. `SpeechTranscriber.bestAvailableAudioFormat(compatibleWith:)`
-7. `AnalyzerInput` — its initializer
+| # | Symbol | Candidate A (this plan) | Candidate B (Apple docs / WWDC) |
+|---|---|---|---|
+| 1 | Transcriber init | `SpeechTranscriber(locale:transcriptionOptions:reportingOptions:attributeOptions:)` | `SpeechTranscriber(locale:preset:)` |
+| 2 | Locale availability | `SpeechTranscriber.supportedLocales` (async?) | `SpeechTranscriber.supportedLocale(equivalentTo:)` |
+| 3 | Model install | `AssetInventory.assetInstallationRequest(supporting:)` → `.downloadAndInstall()` | (confirm exact names) |
+| 4 | Feed the analyzer | `analyzer.start(inputSequence:)` | `analyzer.analyzeSequence(_:)` |
+| 5 | Finalize | `finalizeAndFinishThroughEndOfInput()` | `finalizeAndFinish(through:)` / `cancelAndFinishNow()` |
+| 6 | Best audio format | `SpeechTranscriber.bestAvailableAudioFormat(compatibleWith:)` | `SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith:)` |
+| 7 | Result timing | `result.text.runs[].audioTimeRange` (CMTimeRange?) | (confirm run attribute key) |
+| 8 | `AnalyzerInput` init | `AnalyzerInput(buffer:)` | `AnalyzerInput(buffer:bufferStartTime:)` |
 
-Adjust the code in Step 2 to match what you find. The *structure* below is correct; individual selectors may differ.
+Adjust the Step 2 code to match. If Candidate B wins for rows 4/5/6, update those call sites accordingly — the surrounding structure does not change.
 
 - [ ] **Step 2: Write the engine**
 
@@ -1181,6 +1241,8 @@ actor SpeechTranscriptionEngine: SegmentProducing {
     }
 
     static func isAvailable(locale: Locale) async -> Bool {
+        // Row 2 of Step 1: confirm whether this is `supportedLocales` (a set) or
+        // `supportedLocale(equivalentTo:)` (returns the matching locale or nil).
         let supported = await SpeechTranscriber.supportedLocales
         return supported.contains { $0.identifier(.bcp47) == locale.identifier(.bcp47) }
     }
@@ -1223,7 +1285,10 @@ actor SpeechTranscriptionEngine: SegmentProducing {
                                             attributeOptions: [.audioTimeRange])
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
-        let analyzerFormat = await SpeechTranscriber.bestAvailableAudioFormat(compatibleWith: [transcriber])
+        // Row 6: some docs place this on SpeechAnalyzer, some on SpeechTranscriber.
+        guard let analyzerFormat = await SpeechTranscriber.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+            throw EngineError.unreadableAudio
+        }
 
         let (inputStream, inputContinuation) = AsyncStream<AnalyzerInput>.makeStream()
 
@@ -1233,13 +1298,14 @@ actor SpeechTranscriptionEngine: SegmentProducing {
             do {
                 try await self.feed(fileURL: fileURL,
                                     request: request,
-                                    format: analyzerFormat,
+                                    analyzerFormat: analyzerFormat,
                                     into: inputContinuation)
             } catch {
                 inputContinuation.finish()
             }
         }
 
+        // Row 4: `start(inputSequence:)` vs `analyzeSequence(_:)` — confirm in Step 1.
         try await analyzer.start(inputSequence: inputStream)
 
         for try await result in transcriber.results {
@@ -1250,14 +1316,26 @@ actor SpeechTranscriptionEngine: SegmentProducing {
         }
 
         feeder.cancel()
+        // Row 5: confirm the exact finalize selector.
         try await analyzer.finalizeAndFinishThroughEndOfInput()
     }
 
     /// Decode `request.duration` seconds starting at `request.offsetInTrack`,
-    /// converting to the analyzer's preferred format.
+    /// converting every buffer into the analyzer's exact format before feeding.
+    ///
+    /// Offset math, and why it's robust: we build a FRESH analyzer per request and
+    /// feed it starting at `offsetInTrack`, and `AVAudioPCMBuffer`s carry no
+    /// timestamps. So the analyzer counts time from zero at the first fed frame,
+    /// making `.audioTimeRange` values relative to the START of this request's
+    /// audio. Book time is therefore `request.bookOffset + reportedTime` — see
+    /// `segment(from:bookOffset:)`. Because the sequence starts at zero we do NOT
+    /// set `AnalyzerInput.bufferStartTime`. **Task 9 must confirm this assumption
+    /// on device** — if the analyzer instead reports asset-timeline times, the
+    /// shift becomes `track.startOffset + reportedTime` and this is the one line
+    /// to change.
     private func feed(fileURL: URL,
                       request: TranscriptionRequest,
-                      format: AVAudioFormat?,
+                      analyzerFormat: AVAudioFormat,
                       into continuation: AsyncStream<AnalyzerInput>.Continuation) async throws {
 
         let asset = AVURLAsset(url: fileURL)
@@ -1272,51 +1350,100 @@ actor SpeechTranscriptionEngine: SegmentProducing {
             duration: CMTime(seconds: request.duration, preferredTimescale: 600)
         )
 
+        // Read as canonical deinterleaved float32 mono. This is the reader's
+        // OUTPUT format; AVAudioConverter then bridges it to whatever the
+        // analyzer wants (sample rate, interleaving, bit depth may all differ).
+        let readerSampleRate = analyzerFormat.sampleRate
         let outputSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVLinearPCMBitDepthKey: 32,
             AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsNonInterleaved: false,
-            AVSampleRateKey: format?.sampleRate ?? 16000,
+            AVLinearPCMIsNonInterleaved: true,
+            AVSampleRateKey: readerSampleRate,
             AVNumberOfChannelsKey: 1
         ]
+        guard let readerFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                               sampleRate: readerSampleRate,
+                                               channels: 1,
+                                               interleaved: false) else {
+            throw EngineError.unreadableAudio
+        }
+
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else { throw EngineError.unreadableAudio }
         reader.add(output)
-        reader.startReading()
+        guard reader.startReading() else { throw EngineError.unreadableAudio }
+
+        // Converter is identity when readerFormat == analyzerFormat; correct
+        // otherwise. Never memcpy across mismatched layouts.
+        let converter = AVAudioConverter(from: readerFormat, to: analyzerFormat)
 
         while let sampleBuffer = output.copyNextSampleBuffer() {
             if Task.isCancelled { break }
-            guard let pcmBuffer = Self.pcmBuffer(from: sampleBuffer, format: format) else { continue }
-            continuation.yield(AnalyzerInput(buffer: pcmBuffer))
+            guard let readerBuffer = Self.pcmBuffer(from: sampleBuffer, format: readerFormat) else { continue }
+
+            let outBuffer: AVAudioPCMBuffer
+            if let converter, readerFormat != analyzerFormat {
+                guard let converted = Self.convert(readerBuffer, using: converter, to: analyzerFormat) else { continue }
+                outBuffer = converted
+            } else {
+                outBuffer = readerBuffer
+            }
+            // Row 8: fresh sequence from zero ⇒ no bufferStartTime.
+            continuation.yield(AnalyzerInput(buffer: outBuffer))
         }
+
+        if reader.status == .failed { throw reader.error ?? EngineError.unreadableAudio }
         reader.cancelReading()
     }
 
-    private static func pcmBuffer(from sampleBuffer: CMSampleBuffer, format: AVAudioFormat?) -> AVAudioPCMBuffer? {
-        guard let format,
-              let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return nil }
-
+    /// Copy a decoded CMSampleBuffer into an AVAudioPCMBuffer of `format` using
+    /// the audio buffer list — safe across channel/layout, unlike a raw memcpy.
+    private static func pcmBuffer(from sampleBuffer: CMSampleBuffer, format: AVAudioFormat) -> AVAudioPCMBuffer? {
         let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
         guard frameCount > 0,
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)),
-              let channelData = buffer.floatChannelData else { return nil }
-
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)) else {
+            return nil
+        }
         buffer.frameLength = AVAudioFrameCount(frameCount)
-        var length = 0
-        var dataPointer: UnsafeMutablePointer<Int8>?
-        guard CMBlockBufferGetDataPointer(blockBuffer,
-                                          atOffset: 0,
-                                          lengthAtOffsetOut: nil,
-                                          totalLengthOut: &length,
-                                          dataPointerOut: &dataPointer) == noErr,
-              let dataPointer else { return nil }
 
-        memcpy(channelData[0], dataPointer, min(length, frameCount * MemoryLayout<Float>.size))
+        let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(
+            sampleBuffer,
+            at: 0,
+            frameCount: Int32(frameCount),
+            into: buffer.mutableAudioBufferList
+        )
+        guard status == noErr else { return nil }
         return buffer
     }
 
+    /// Run `input` through `converter` into a buffer of `outFormat`.
+    private static func convert(_ input: AVAudioPCMBuffer,
+                                using converter: AVAudioConverter,
+                                to outFormat: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let ratio = outFormat.sampleRate / input.format.sampleRate
+        let capacity = AVAudioFrameCount(Double(input.frameLength) * ratio) + 1
+        guard let output = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: capacity) else { return nil }
+
+        var supplied = false
+        var error: NSError?
+        let statusValue = converter.convert(to: output, error: &error) { _, outStatus in
+            if supplied {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            supplied = true
+            outStatus.pointee = .haveData
+            return input
+        }
+        guard error == nil, statusValue != .error, output.frameLength > 0 else { return nil }
+        return output
+    }
+
     /// Convert one recognizer result into a book-time segment.
-    /// `.audioTimeRange` gives file-relative times; `bookOffset` shifts them.
+    /// `.audioTimeRange` gives request-relative times; `bookOffset` shifts them
+    /// (see the offset-math note on `feed`).
     private static func segment(from result: SpeechTranscriber.Result, bookOffset: Double) -> CaptionSegment? {
         let attributed = result.text
         let plain = String(attributed.characters)
@@ -1342,7 +1469,7 @@ actor SpeechTranscriptionEngine: SegmentProducing {
 
 - [ ] **Step 3: Register the source file with the App target**
 
-Follow **Procedure A** with `Shared/util/captions/SpeechTranscriptionEngine.swift` and target `App`.
+Follow **Procedure A** with `Shared/util/captions/SpeechTranscriptionEngine.swift` and target `Audiobookshelf`.
 
 - [ ] **Step 4: Build to verify it compiles**
 
@@ -1645,11 +1772,14 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
         var tracks: [CaptionTrack] = []
         var fileURLs: [String: URL] = [:]
 
-        for track in media.tracks {
+        for (offset, track) in media.tracks.enumerated() {
             guard let localFileId = track.localFileId,
                   let localFile = item.localFiles.first(where: { $0.id == localFileId })
             else { continue }
-            tracks.append(CaptionTrack(index: track.index,
+            // AudioTrack.index and serverIndex are both Int? in the Realm model;
+            // fall back to enumeration order so CaptionTrack.index is always set.
+            let index = track.index ?? track.serverIndex ?? offset
+            tracks.append(CaptionTrack(index: index,
                                        startOffset: track.startOffset ?? 0,
                                        duration: track.duration,
                                        localFileId: localFileId))
@@ -1739,7 +1869,7 @@ export { AbsAudioPlayer, AbsDownloader, AbsFileSystem, AbsLogger, AbsDatabase, A
 
 - [ ] **Step 5: Register the plugin source with the App target**
 
-Follow **Procedure A** with `App/plugins/AbsTranscriber.swift` and target `App`.
+Follow **Procedure A** with `App/plugins/AbsTranscriber.swift` and target `Audiobookshelf`.
 
 - [ ] **Step 6: Build to verify it compiles**
 
@@ -2037,6 +2167,7 @@ Add to `strings/en-us.json`, keeping the file's alphabetical ordering:
   "MessageDownloadingLanguageSupport": "Downloading language support…",
   "MessagePreparingCaptions": "Preparing captions…",
   "MessageCaptionsAccuracyNotice": "Captions are generated on your device from the audio. Names and unusual words may be transcribed incorrectly.",
+  "MessageCaptionsRequireDownload": "Download this book to read along with captions.",
   "LabelCaptions": "Captions",
 ```
 
@@ -2053,7 +2184,7 @@ Expected: `strings OK`.
 
 - [ ] **Step 3: Swap the cover block in the player**
 
-In `components/app/AudioPlayer.vue`, replace lines 33-41 with:
+In `components/app/AudioPlayer.vue`, the cover block is the `cover-wrapper` div (currently lines 33-41). Confirm its exact bounds first — `grep -n 'cover-wrapper' components/app/AudioPlayer.vue` — then replace that whole div with:
 
 ```html
     <div class="cover-wrapper absolute z-30 pointer-events-auto" @click="clickContainer">
@@ -2070,13 +2201,16 @@ In `components/app/AudioPlayer.vue`, replace lines 33-41 with:
 
 - [ ] **Step 4: Add the CC toggle button**
 
-In the same file, inside the `showFullscreen` header row (the `<div>` block ending at line 31), add before its closing `</div>`:
+The fullscreen header controls are absolute-positioned siblings inside the `v-if="showFullscreen"` background div (the one opening at line 3). The existing right-side icons sit at `right-4` (more_vert) and `right-16` (cast, `v-show="showCastBtn"`). Place the CC button clear of both — at `right-28` — as a new sibling among those icon divs (immediately after the `more_vert` div):
 
 ```html
-      <button v-if="captionsSupported" class="absolute top-4 right-14 z-40 p-1" :aria-label="$strings.LabelCaptions" @click.stop="toggleCaptions">
-        <span class="material-symbols text-3xl" :class="showCaptions ? 'text-fg' : 'text-fg text-opacity-50'">closed_caption</span>
-      </button>
+      <div v-if="captionsButtonVisible" class="top-6 right-28 absolute cursor-pointer" @click="toggleCaptions">
+        <span class="material-symbols text-3xl"
+              :class="[!captionsEnabled ? 'text-fg text-opacity-30' : showCaptions ? 'text-fg' : 'text-fg text-opacity-60', { 'text-black text-opacity-75': coverBgIsLight && theme !== 'black' }]">closed_caption</span>
+      </div>
 ```
+
+The button is **visible** whenever the platform supports captions and a book is loaded, but rendered **dimmed/disabled** for a streaming book; `toggleCaptions` shows the "requires download" toast in that state (per the spec's "Book not downloaded" row). When `showCastBtn` is false the cast slot at `right-16` is empty, leaving a gap — acceptable, since the CC button keeps a fixed position rather than reflowing.
 
 - [ ] **Step 5: Wire up the script**
 
@@ -2090,13 +2224,22 @@ Add to `data()`:
 
 ```js
       showCaptions: false,
-      captionsSupported: false,
+      // iOS 26 present. Constant for the life of the app, so it's checked once.
+      captionsPlatformSupported: false,
 ```
+
+Split the two gates deliberately. **Platform support (iOS 26) is constant** and is checked a single time at mount. **Book-downloaded state is reactive** off `playbackSession`, so it re-evaluates on every book without any watcher. This is what avoids the mount-timing bug: `checkCaptionsPlatformSupported()` never reads `isLocalPlayMethod`, so it doesn't matter that `playbackSession` is still null at mount.
 
 Add to `methods`:
 
 ```js
     toggleCaptions() {
+      // Per spec, the button is visible but disabled for a streaming (not
+      // downloaded) book — explain rather than silently do nothing.
+      if (!this.captionsEnabled) {
+        this.$toast.info(this.$strings.MessageCaptionsRequireDownload)
+        return
+      }
       this.showCaptions = !this.showCaptions
       // Disclose the ASR accuracy limitation once, on first enable, rather than
       // letting the user discover it via a mangled character name.
@@ -2105,38 +2248,59 @@ Add to `methods`:
         this.$toast.info(this.$strings.MessageCaptionsAccuracyNotice, { timeout: 8000 })
       }
     },
-    async checkCaptionsSupported() {
-      // Captions need iOS 26 AND a downloaded book — the button must never lie.
-      if (this.$platform !== 'ios' || !this.isLocalPlayMethod) {
-        this.captionsSupported = false
+    async checkCaptionsPlatformSupported() {
+      if (this.$platform !== 'ios') {
+        this.captionsPlatformSupported = false
         return
       }
       try {
+        // reason === 'os' means iOS < 26 — the only case that hides the button.
+        // 'permission' and 'locale' still show the button; the panel explains them.
         const result = await AbsTranscriber.isSupported()
-        this.captionsSupported = !!result.supported
+        this.captionsPlatformSupported = result.reason !== 'os'
       } catch (error) {
-        this.captionsSupported = false
+        this.captionsPlatformSupported = false
       }
     },
 ```
 
-Add a computed property:
+Add computed properties:
 
 ```js
+    // Visible whenever the platform supports captions and a book is loaded.
+    captionsButtonVisible() {
+      return this.captionsPlatformSupported && !!this.playbackSession
+    },
+    // Enabled only for a downloaded (local) book.
+    captionsEnabled() {
+      return this.isLocalPlayMethod
+    },
+    // Captions run against the downloaded item. localLibraryItem.id is the
+    // "local_…" id the native plugin resolves via getLocalLibraryItem.
     captionLibraryItemId() {
-      return this.$store.state.playerLibraryItemId
+      return this.localLibraryItem?.id || this.playbackSession?.libraryItemId || null
     },
 ```
 
-Call `this.checkCaptionsSupported()` at the end of the existing `mounted()` hook.
+Add a `watch` so captions never leak across books:
 
-**Verify these names before running:** confirm `isLocalPlayMethod` and `$store.state.playerLibraryItemId` exist in this component's scope:
-
-```bash
-grep -n "isLocalPlayMethod\|playerLibraryItemId\|currentPlaybackRate" components/app/AudioPlayer.vue | head
+```js
+    playbackSession(newSession, oldSession) {
+      if (newSession?.libraryItemId !== oldSession?.libraryItemId) {
+        this.showCaptions = false
+      }
+    },
 ```
 
-If a name differs, use the real one rather than adding a new store field.
+Call `this.checkCaptionsPlatformSupported()` at the end of the existing `mounted()` hook.
+
+**Verify these names before running** — confirm the real symbols this uses all exist in the component (they were verified against the current file, but re-check):
+
+```bash
+grep -n "isLocalPlayMethod\|localLibraryItem\b\|playbackSession\b\|currentPlaybackRate\|onPlaybackSession" components/app/AudioPlayer.vue | head
+```
+
+`playbackSession` is a component `data` field (not a store getter); `localLibraryItem` and `isLocalPlayMethod` are existing computeds; `currentPlaybackRate` is existing `data`. Do **not** reference `$store.state.playerLibraryItemId` — it does not exist.
 
 - [ ] **Step 6: Build the web layer and sync**
 
@@ -2182,9 +2346,11 @@ Tap CC for the first time. Expected: the system speech-recognition permission pr
 
 Deny permission on a second device or after resetting privacy (Settings → General → Transfer or Reset → Reset Location & Privacy) and confirm the panel shows the error state rather than hanging on "Preparing captions…".
 
-- [ ] **Step 4: Verify sync at 1x and 2x**
+- [ ] **Step 4: Verify sync at 1x and 2x, and the offset-math assumption**
 
 Play at 1x for two minutes. The highlighted word should track the narrated word without visible drift. Repeat at 2x. Record any drift you observe and where it appears.
+
+**Critical:** start playback at a position **deep in the book** (e.g. an hour in, well into a later track) with no cached captions there, enable captions, and confirm the words align with *that* audio — not audio from the start of the file or book. A constant offset (captions consistently N seconds early/late, or showing text from 0:00) means the `feed` offset-math assumption is wrong: the analyzer is reporting asset-timeline times, not request-relative times. If so, change the shift in `segment(from:bookOffset:)` per the note on `feed` (use `track.startOffset + reportedTime`) and re-verify. This is the single most likely place for the engine to be subtly wrong.
 
 - [ ] **Step 5: Verify seek behavior**
 
