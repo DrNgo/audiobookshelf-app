@@ -702,6 +702,8 @@ protocol SegmentProducing: Sendable {
 
 - [ ] **Step 2: Write the failing test**
 
+> **Swift gotcha:** `XCTAssertEqual`/`XCTAssertGreaterThan` take a non-`async` `@autoclosure`, so `await` cannot appear inside their arguments (e.g. `XCTAssertEqual(await engine.callCount(), 1)` won't compile). Hoist each awaited value into a preceding `let` first — `let count = await engine.callCount(); XCTAssertEqual(count, 1)` — at every such site below. Semantics are unchanged.
+
 Create `ios/App/AudiobookshelfUnitTests/Shared/util/captions/CaptionSchedulerTests.swift`:
 
 ```swift
@@ -994,12 +996,13 @@ actor CaptionScheduler {
     /// nothing if it was superseded — this is what makes a stale task's return
     /// harmless instead of letting it clobber the newer task's handle.
     private var generation = 0
-    /// Quantised book offsets of requests the engine failed on at the current
-    /// position. Prevents re-requesting the same failing gap forever. Cleared on
-    /// seek, and naturally escaped once the playhead advances past the gap.
-    private var failedOffsets: Set<Int> = []
-
-    private static func offsetKey(_ time: Double) -> Int { Int((time * 1000).rounded()) }
+    /// Book-time ranges the engine failed on. A failed gap is dammed (not
+    /// re-requested) until a seek clears it. Range-keyed, NOT point-keyed: a
+    /// request's bookOffset advances with the playhead while a gap stays
+    /// uncovered (coveredUntil echoes the playhead back), so a point key would
+    /// fail to suppress the repeat and re-request the failed region on every
+    /// advance. Naturally escaped once the playhead advances past the range.
+    private var failedRanges: [Range<Double>] = []
 
     init(tracks: [CaptionTrack],
          fileURLs: [String: URL],
@@ -1037,7 +1040,7 @@ actor CaptionScheduler {
         // position — a backward seek into cached audio must issue no work.
         isFilling = false
         // A seek is a fresh chance for any region that failed before.
-        failedOffsets.removeAll()
+        failedRanges.removeAll()
         supersedeInFlight()
         scheduleFillIfNeeded()
     }
@@ -1104,8 +1107,9 @@ actor CaptionScheduler {
                                                         segments: segments,
                                                         tracks: tracks,
                                                         windowAhead: windowAhead),
-              // Don't re-request a gap that already failed at this position.
-              !failedOffsets.contains(Self.offsetKey(request.bookOffset))
+              // Don't re-request a gap that already failed (range-keyed, so an
+              // advancing playhead within the failed region stays suppressed).
+              !failedRanges.contains(where: { $0.contains(request.bookOffset) })
         else {
             isFilling = false
             return
@@ -1145,9 +1149,9 @@ actor CaptionScheduler {
         fillTask = nil
 
         if failed {
-            // Record the failure so the same gap isn't retried; leave isFilling
-            // clear so a later advance/seek can re-evaluate.
-            failedOffsets.insert(Self.offsetKey(request.bookOffset))
+            // Dam the failed range so it isn't retried until a seek; leave
+            // isFilling clear so a later advance/seek can re-evaluate.
+            failedRanges.append(request.bookOffset ..< (request.bookOffset + request.duration))
             isFilling = false
             return
         }
