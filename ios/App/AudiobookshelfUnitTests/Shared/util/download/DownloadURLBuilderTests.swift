@@ -75,6 +75,33 @@ final class DownloadURLBuilderTests: XCTestCase {
 
     // The token is supplied by the caller from the CURRENT server config rather than being baked into
     // a persisted URI, so a download reconciled hours later doesn't present an expired JWT.
+    // Resume data embeds the request it came from. If a part's URL was corrupt and has now been
+    // repaired, reusing that resume data resurrects the dead request — which is exactly how the bad
+    // URL kept perpetuating itself through retries after the stored record was fixed.
+    func testSameEndpointIgnoresTheTokenQuery() {
+        let a = URL(string: "https://abs.example.com/api/items/1/file/9/download?token=old")
+        let b = URL(string: "https://abs.example.com/api/items/1/file/9/download?token=new")
+        XCTAssertTrue(DownloadURLBuilder.sameEndpoint(a, b))
+    }
+
+    func testSameEndpointDetectsARepairedHost() {
+        let broken = URL(string: "https://abs.example.comhttps://abs.example.com?token=t")
+        let fixed = URL(string: "https://abs.example.com/api/items/1/file/9/download?token=t")
+        XCTAssertFalse(DownloadURLBuilder.sameEndpoint(broken, fixed))
+    }
+
+    func testSameEndpointIsFalseWhenEitherIsNil() {
+        XCTAssertFalse(DownloadURLBuilder.sameEndpoint(nil, URL(string: "https://a.com/x")))
+        XCTAssertFalse(DownloadURLBuilder.sameEndpoint(URL(string: "https://a.com/x"), nil))
+    }
+
+    // The query holds the access token, so it must never reach the log.
+    func testRedactedDropsTheQuery() {
+        let url = URL(string: "https://abs.example.com/api/items/1/file/9/download?token=secret")
+        XCTAssertEqual(DownloadURLBuilder.redacted(url), "https://abs.example.com/api/items/1/file/9/download")
+        XCTAssertFalse(DownloadURLBuilder.redacted(url).contains("secret"))
+    }
+
     func testTokenComesFromTheCallerSoItCanBeRefreshed() {
         let url = DownloadURLBuilder.url(address: address, token: "fresh-token",
                                          serverPath: "/api/items/item-1/file/9876/download",

@@ -93,7 +93,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
             }
 
             activeDownloads[next.partId] = ActiveDownload(partId: next.partId, filename: next.filename, downloadURL: next.downloadURL, task: next.task, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: nil, clearedRetryState: false)
-            AbsLogger.info(message: "Starting download for \(next.filename) (\(activeDownloads.count)/\(maxConcurrentDownloads) active, \(pendingDownloadTasks.count) pending)")
+            AbsLogger.info(message: "Starting download for \(next.filename) → \(DownloadURLBuilder.redacted(next.task.originalRequest?.url ?? next.downloadURL)) (\(activeDownloads.count)/\(maxConcurrentDownloads) active, \(pendingDownloadTasks.count) pending)")
             next.task.resume()
         }
         let hasActive = !activeDownloads.isEmpty
@@ -105,10 +105,27 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         if hasActive { startStallWatchdogIfNeeded() }
     }
 
+    /// Queue a part, unless it is already active or already queued.
+    ///
+    /// Retries are scheduled with a delay, so by the time one lands the part may have been queued again
+    /// by a reconcile or by another task's completion. Without this the queue grew without bound — a
+    /// 10-part book reached "16 pending", with the same part retried twice within 40ms, each spawning
+    /// more tasks.
     private func enqueuePendingDownload(_ pending: PendingDownload) {
         downloadQueueLock.lock()
-        pendingDownloadTasks.append(pending)
+        let alreadyQueued = activeDownloads[pending.partId] != nil
+            || pendingDownloadTasks.contains(where: { $0.partId == pending.partId })
+        if alreadyQueued {
+            discardedTaskIds.insert(pending.task.taskIdentifier)
+        } else {
+            pendingDownloadTasks.append(pending)
+        }
         downloadQueueLock.unlock()
+
+        if alreadyQueued {
+            AbsLogger.info(message: "Dropping duplicate queue entry for \(pending.filename)")
+            pending.task.cancel()
+        }
     }
 
     // Reconnect to background downloads left over from a previous app launch so a relaunch can't
@@ -309,9 +326,25 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
             let recoverable = intentionalStallCancel || DownloadRetryPolicy.isRecoverable(error)
 
             if recoverable && attemptsUsed < DownloadRetryPolicy.maxAttemptsPerPart {
-                let url = active?.downloadURL ?? task.originalRequest?.url
+                // Rebuild from the database + current config rather than reusing the URL this task ran
+                // with. A task adopted from a previous launch carries whatever URL it was created with,
+                // so a corrupt one (see DownloadURLBuilder) would otherwise propagate through every
+                // retry forever — repairing the stored record alone was not enough.
+                let previousURL = active?.downloadURL ?? task.originalRequest?.url
+                let part = Database.shared.getDownloadItem(downloadItemPartId: partId)?
+                    .downloadItemParts.first(where: { $0.id == partId })
+                let url = part.flatMap { self.downloadURL(for: $0) } ?? previousURL
+
+                // Resume data embeds the request it came from, so it can only be reused if we're still
+                // talking to the same endpoint. After a repair it points at the dead URL.
+                let endpointUnchanged = DownloadURLBuilder.sameEndpoint(previousURL, url)
+                let usableResumeData = endpointUnchanged ? resumeData : nil
+                if !endpointUnchanged {
+                    AbsLogger.info(message: "Download endpoint for \(active?.filename ?? partId) changed to \(DownloadURLBuilder.redacted(url)) — restarting instead of resuming")
+                }
+
                 let retryTask: URLSessionDownloadTask? = {
-                    if let resumeData = resumeData { return session.downloadTask(withResumeData: resumeData) }
+                    if let usableResumeData = usableResumeData { return session.downloadTask(withResumeData: usableResumeData) }
                     if let url = url { return session.downloadTask(with: url) }
                     return nil
                 }()
@@ -320,7 +353,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                     let filename = active?.filename ?? partId
                     let attempt = stateStore.recordAttempt(forPartId: partId)
                     let delay = DownloadRetryPolicy.backoffDelay(forAttempt: attempt)
-                    AbsLogger.info(message: "Retrying \(filename) — attempt \(attempt)/\(DownloadRetryPolicy.maxAttemptsPerPart) in \(Int(delay))s (resume=\(resumeData != nil), stalled=\(intentionalStallCancel))")
+                    AbsLogger.info(message: "Retrying \(filename) — attempt \(attempt)/\(DownloadRetryPolicy.maxAttemptsPerPart) in \(Int(delay))s (resume=\(usableResumeData != nil), stalled=\(intentionalStallCancel))")
                     let pending = PendingDownload(partId: partId, filename: filename, downloadURL: resolvedURL, task: retryTask)
                     DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay) { [weak self] in
                         self?.enqueuePendingDownload(pending)
@@ -691,10 +724,18 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         // ran concurrently against the same destination files, overwriting each other's queue entries
         // and leaving orphaned tasks running untracked.
         let expectedItemId = episodeId.map { "\(item.id)-\($0)" } ?? item.id
-        if let existing = Database.shared.getDownloadItem(downloadItemId: expectedItemId), !existing.isDoneDownloading() {
-            AbsLogger.info(message: "Download already in progress for \(existing.itemTitle ?? expectedItemId) — not starting a second one")
-            try? self.notifyListeners("onDownloadItem", data: existing.asDictionary())
-            return
+        if let existing = Database.shared.getDownloadItem(downloadItemId: expectedItemId) {
+            if existing.libraryItemId != item.id {
+                // The stored record doesn't describe the book being requested — a stale/corrupt row
+                // (the duplicate-overwrite bug could cross-link items). Blocking on it would leave the
+                // user permanently unable to download this book, so drop it and queue a fresh one.
+                AbsLogger.error(message: "Discarding stale download record under \(expectedItemId) (held \(existing.itemTitle ?? "?"))")
+                try? existing.delete()
+            } else if !existing.isDoneDownloading() {
+                AbsLogger.info(message: "Download already in progress for \(existing.itemTitle ?? expectedItemId) — not starting a second one")
+                try? self.notifyListeners("onDownloadItem", data: existing.asDictionary())
+                return
+            }
         }
 
         // Queue up everything for downloading

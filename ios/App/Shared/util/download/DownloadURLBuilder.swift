@@ -45,4 +45,21 @@ enum DownloadURLBuilder {
         }
         return URL(string: urlString)
     }
+
+    /// Whether two URLs address the same endpoint, ignoring the query (which carries the access token,
+    /// so it legitimately differs between a stored URL and a freshly built one).
+    ///
+    /// Used to decide whether a retry may reuse resume data: resume data embeds the request it came
+    /// from, so if the endpoint has changed — a corrupt stored URL being repaired — the resume data
+    /// points at the dead URL and must be thrown away, or the bad request perpetuates itself forever.
+    static func sameEndpoint(_ lhs: URL?, _ rhs: URL?) -> Bool {
+        guard let lhs = lhs, let rhs = rhs else { return false }
+        return lhs.host == rhs.host && lhs.path == rhs.path && lhs.scheme == rhs.scheme
+    }
+
+    /// Host + path only — safe to log, since the query carries the access token.
+    static func redacted(_ url: URL?) -> String {
+        guard let url = url else { return "<no url>" }
+        return "\(url.scheme ?? "?")://\(url.host ?? "?")\(url.path)"
+    }
 }
