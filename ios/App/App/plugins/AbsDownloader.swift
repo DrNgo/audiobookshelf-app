@@ -173,7 +173,9 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 if part.completed && !part.failed { continue } // genuinely finished
                 allDone = false
                 if adoptedPartIds.contains(part.id) { continue } // still downloading via an adopted task
-                guard let url = part.downloadURL else { continue }
+                // Rebuild against the current config: the persisted URI carries a stale token and, for
+                // parts queued before the serverPath fix, an unreachable host.
+                guard let url = self.downloadURL(for: part) else { continue }
 
                 // Continue from where the previous run left off when we have resume data. This used to
                 // unconditionally reset progress to 0 and re-download the whole file, so a book too big
@@ -748,12 +750,16 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
             throw LibraryItemDownloadError.noMetadata
         }
 
-        let serverUrl = urlForTrack(item: item, track: track)
+        // Persist the API PATH, not the server address. Storing the address here is what produced the
+        // "address + address" URI — a nonexistent host — for every track part, so any download restarted
+        // from the database could never transfer a byte. See DownloadURLBuilder.
+        let serverPath = serverPathForTrack(item: item, track: track)
         let itemDirectory = try createLibraryItemFileDirectory(item: item)
         let localUrl = "\(itemDirectory)/\(filename)"
 
+        let part = DownloadItemPart(downloadItemId: downloadItemId, filename: filename, destination: localUrl, itemTitle: track.title ?? "Unknown", serverPath: serverPath, audioTrack: track, episode: episode, ebookFile: nil, size: track.metadata?.size ?? 0)
+        guard let serverUrl = downloadURL(for: part) else { throw LibraryItemDownloadError.noMetadata }
         let task = session.downloadTask(with: serverUrl)
-        let part = DownloadItemPart(downloadItemId: downloadItemId, filename: filename, destination: localUrl, itemTitle: track.title ?? "Unknown", serverPath: Store.serverConfig!.address, audioTrack: track, episode: episode, ebookFile: nil, size: track.metadata?.size ?? 0)
 
         // Store the id on the task so the download item can be pulled from the database later
         task.taskDescription = part.id
@@ -796,10 +802,10 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         return DownloadItemPartTask(part: part, task: task, partId: part.id, filename: filename)
     }
     
-    private func urlForTrack(item: LibraryItem, track: AudioTrack) -> URL {
+    private func serverPathForTrack(item: LibraryItem, track: AudioTrack) -> String {
         // TODO: Future server release should include ino with AudioFile or FileMetadata
         let trackPath = track.metadata?.path ?? ""
-        
+
         var audioFileIno = ""
         if (item.mediaType == "podcast") {
             let podcastEpisodes = item.media?.episodes ?? List<PodcastEpisode>()
@@ -811,8 +817,20 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
             audioFileIno = matchingAudioFile?.ino ?? ""
         }
 
-        let urlstr = "\(Store.serverConfig!.address)/api/items/\(item.id)/file/\(audioFileIno)/download?token=\(Store.serverConfig!.token)"
-        return URL(string: urlstr)!
+        return DownloadURLBuilder.trackPath(itemId: item.id, ino: audioFileIno)
+    }
+
+    /// Build a part's download URL against the CURRENT server config, rather than trusting the URI that
+    /// was persisted when the download was first queued. That stored URI embeds an access token (now a
+    /// short-lived JWT, so it expires) and, for track parts created before the serverPath fix, points at
+    /// a malformed host. Both only ever bit downloads that had to be restarted from the database.
+    private func downloadURL(for part: DownloadItemPart) -> URL? {
+        guard let config = Store.serverConfig else { return part.downloadURL }
+        return DownloadURLBuilder.url(address: config.address,
+                                      token: config.token,
+                                      serverPath: part.serverPath,
+                                      contentUrlFallback: part.audioTrack?.contentUrl)
+            ?? part.downloadURL
     }
     
     private func createLibraryItemFileDirectory(item: LibraryItem) throws -> String {

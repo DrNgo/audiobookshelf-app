@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		245205BF80020649E2590D40 /* StallEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC79F1B4DDCF808A57AD18EA /* StallEvaluator.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		2FB8B133C4738A827DC72AB5 /* DownloadURLBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B090D64C76A0996E09292BD1 /* DownloadURLBuilder.swift */; };
 		37857FB70244393F3FB3EE87 /* DownloadStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFA99F42B6DD2B0C33C2D7E6 /* DownloadStateStore.swift */; };
 		3A200C1527D64D7E00CBF02E /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A200C1427D64D7E00CBF02E /* AudioPlayer.swift */; };
 		3A90295F280968E700E1D427 /* PlaybackReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A90295E280968E700E1D427 /* PlaybackReport.swift */; };
@@ -39,6 +40,7 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		65643F4DAA661FB0B247247E /* Pods_Audiobookshelf.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */; };
 		6F2516272E68DA3000F40541 /* LogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F2516262E68DA3000F40541 /* LogEntry.swift */; };
+		784499F5B8872D8CD3CFD1BF /* DownloadURLBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2741DF9349F343E3DE123BCC /* DownloadURLBuilderTests.swift */; };
 		7B986E7621B110A1DB67B87D /* Pods_AudiobookshelfUnitTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 380D28B201C0E06315FE7794 /* Pods_AudiobookshelfUnitTests.framework */; };
 		7E23D9D1D156324D4CB7D31D /* DownloadRetryPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED2B21B9967BB387A18F5830 /* DownloadRetryPolicyTests.swift */; };
 		C7DA20D77504EF223AAB9F20 /* DownloadRetryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AA8B6D19D966FB0C81A4D86 /* DownloadRetryPolicy.swift */; };
@@ -88,6 +90,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		2741DF9349F343E3DE123BCC /* DownloadURLBuilderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadURLBuilderTests.swift; path = util/download/DownloadURLBuilderTests.swift; sourceTree = "<group>"; };
 		2AA8B6D19D966FB0C81A4D86 /* DownloadRetryPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadRetryPolicy.swift; path = download/DownloadRetryPolicy.swift; sourceTree = "<group>"; };
 		2BCF290F1D772EBCF1AE5277 /* DownloadStateStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadStateStoreTests.swift; path = util/download/DownloadStateStoreTests.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
@@ -127,6 +130,7 @@
 		950469D22E39578A01C1307B /* Pods-AudiobookshelfUnitTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-AudiobookshelfUnitTests.release.xcconfig"; path = "Target Support Files/Pods-AudiobookshelfUnitTests/Pods-AudiobookshelfUnitTests.release.xcconfig"; sourceTree = "<group>"; };
 		A39D1D2DC23F7795249EF6B3 /* Pods-AudiobookshelfUnitTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-AudiobookshelfUnitTests.debug.xcconfig"; path = "Target Support Files/Pods-AudiobookshelfUnitTests/Pods-AudiobookshelfUnitTests.debug.xcconfig"; sourceTree = "<group>"; };
 		A9E2E1841028828B67E88188 /* StallEvaluatorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StallEvaluatorTests.swift; path = util/download/StallEvaluatorTests.swift; sourceTree = "<group>"; };
+		B090D64C76A0996E09292BD1 /* DownloadURLBuilder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadURLBuilder.swift; path = download/DownloadURLBuilder.swift; sourceTree = "<group>"; };
 		BE96D57E131924D520D57057 /* Pods-Audiobookshelf.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.debug.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.debug.xcconfig"; sourceTree = "<group>"; };
 		CFA99F42B6DD2B0C33C2D7E6 /* DownloadStateStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadStateStore.swift; path = download/DownloadStateStore.swift; sourceTree = "<group>"; };
 		D2F7F575384A63F1C47DE984 /* Pods-Audiobookshelf.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.release.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.release.xcconfig"; sourceTree = "<group>"; };
@@ -331,6 +335,7 @@
 				2AA8B6D19D966FB0C81A4D86 /* DownloadRetryPolicy.swift */,
 				DC79F1B4DDCF808A57AD18EA /* StallEvaluator.swift */,
 				CFA99F42B6DD2B0C33C2D7E6 /* DownloadStateStore.swift */,
+				B090D64C76A0996E09292BD1 /* DownloadURLBuilder.swift */,
 			);
 			name = download;
 			sourceTree = "<group>";
@@ -341,6 +346,7 @@
 				ED2B21B9967BB387A18F5830 /* DownloadRetryPolicyTests.swift */,
 				A9E2E1841028828B67E88188 /* StallEvaluatorTests.swift */,
 				2BCF290F1D772EBCF1AE5277 /* DownloadStateStoreTests.swift */,
+				2741DF9349F343E3DE123BCC /* DownloadURLBuilderTests.swift */,
 			);
 			name = download;
 			sourceTree = "<group>";
@@ -655,6 +661,7 @@
 				C7DA20D77504EF223AAB9F20 /* DownloadRetryPolicy.swift in Sources */,
 				245205BF80020649E2590D40 /* StallEvaluator.swift in Sources */,
 				37857FB70244393F3FB3EE87 /* DownloadStateStore.swift in Sources */,
+				2FB8B133C4738A827DC72AB5 /* DownloadURLBuilder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -666,6 +673,7 @@
 				7E23D9D1D156324D4CB7D31D /* DownloadRetryPolicyTests.swift in Sources */,
 				FDE0B559FD030DBB5072DCD1 /* StallEvaluatorTests.swift in Sources */,
 				C8219BA1DB1983D1D4E7E168 /* DownloadStateStoreTests.swift in Sources */,
+				784499F5B8872D8CD3CFD1BF /* DownloadURLBuilderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
