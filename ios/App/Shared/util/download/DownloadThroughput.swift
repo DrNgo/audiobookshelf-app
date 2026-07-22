@@ -17,9 +17,13 @@ enum DownloadThroughput {
         return (Double(bytes) / 1_000_000.0) / seconds
     }
 
+    /// A server that sends no Content-Length reports -1, which must not be rendered as "-0.0 MB".
     static func describeBytes(_ bytes: Int64) -> String {
+        guard bytes >= 0 else { return "unknown size" }
         let mb = Double(bytes) / 1_000_000.0
         if mb >= 1000 { return String(format: "%.2f GB", mb / 1000) }
+        // Covers are tens of KB; "0.0 MB" told us nothing about whether one actually arrived.
+        if mb < 1 { return String(format: "%.0f KB", Double(bytes) / 1000.0) }
         return String(format: "%.1f MB", mb)
     }
 

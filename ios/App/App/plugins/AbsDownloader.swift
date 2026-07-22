@@ -102,8 +102,6 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     // back to 3, which keeps per-file rates (and ETAs) as high as the cap allows.
     private let maxConcurrentDownloads = 3
 
-    private var hasRunSpeedProbe = false
-
     // Aggregate throughput sampling, so total rate is directly readable rather than summed by hand.
     private var aggregateBytesWritten: Int64 = 0
     private var aggregateWindowStart: Date?
@@ -234,6 +232,13 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     /// Reissue a transfer that was cancelled purely to move it between sessions. Deliberately does NOT
     /// consume a retry attempt or touch failure state — nothing went wrong.
     private func reissueMigratedDownload(partId: String, filename: String, previousURL: URL?, resumeData: Data?) {
+        // Persist it before reissuing. Backgrounding is exactly when the app is most likely to be killed
+        // next, and a task killed outright delivers no completion — so without this, reconcile finds
+        // nothing to resume from and restarts the file. Observed costing 310 MB of a 380 MB transfer.
+        if let resumeData = resumeData {
+            stateStore.saveResumeData(resumeData, forPartId: partId)
+        }
+
         let useForeground = isAppInForeground
         let session = useForeground ? foregroundSession : backgroundSession
         let part = Database.shared.getDownloadItem(downloadItemPartId: partId)?
@@ -258,43 +263,6 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         enqueuePendingDownload(PendingDownload(partId: partId, filename: filename, downloadURL: resolvedURL,
                                                task: task, usesForegroundSession: useForeground))
         startNextDownloadInQueue()
-    }
-
-    /// One-shot diagnostic: fetch a few MB of a real track over a DEFAULT (in-process) URLSession and
-    /// report the rate, alongside whether the server honours a Range request.
-    ///
-    /// Two open questions, one request. The background session is pinned at ~0.6 MB/s aggregate while a
-    /// desktop browser gets 30-40 MB/s from the same server — but Low Data Mode or a slow link would
-    /// look identical from inside that session, so this measures the same device on the same network at
-    /// the same moment. And the Range status decides whether transfers can be handed between sessions
-    /// at all: without 206 support, any handoff restarts the file from zero.
-    private func runForegroundSpeedProbe(url: URL) {
-        guard !hasRunSpeedProbe else { return }
-        hasRunSpeedProbe = true
-
-        let probeBytes = 8 * 1024 * 1024
-        var request = URLRequest(url: url)
-        request.setValue("bytes=0-\(probeBytes - 1)", forHTTPHeaderField: "Range")
-
-        let probeSession = URLSession(configuration: .default)
-        let startedAt = Date()
-        probeSession.dataTask(with: request) { data, response, error in
-            defer { probeSession.finishTasksAndInvalidate() }
-            let elapsed = Date().timeIntervalSince(startedAt)
-            if let error = error {
-                AbsLogger.error(message: "PROBE failed: \(error.localizedDescription)")
-                return
-            }
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            let bytes = Int64(data?.count ?? 0)
-            let rate = DownloadThroughput.megabytesPerSecond(bytes: bytes, seconds: elapsed)
-            AbsLogger.info(message: String(format: "PROBE (default session): HTTP %d, %@ in %.2fs = %@ — range supported: %@",
-                                           status,
-                                           DownloadThroughput.describeBytes(bytes),
-                                           elapsed,
-                                           DownloadThroughput.describeRate(rate),
-                                           status == 206 ? "YES" : "NO"))
-        }.resume()
     }
 
     /// Tear down everything in flight or queued for these parts, so a replaced download can't leave
@@ -1089,10 +1057,6 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         downloadQueueLock.unlock()
 
         AbsLogger.info(message: "Added \(tasks.count) tasks to download queue. Starting downloads...")
-
-        if let probeURL = tasks.first?.task.originalRequest?.url {
-            runForegroundSpeedProbe(url: probeURL)
-        }
 
         // Start downloading (up to maxConcurrentDownloads at a time)
         startNextDownloadInQueue()

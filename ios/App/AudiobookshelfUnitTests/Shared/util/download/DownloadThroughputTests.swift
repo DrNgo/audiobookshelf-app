@@ -22,6 +22,16 @@ final class DownloadThroughputTests: XCTestCase {
         XCTAssertEqual(DownloadThroughput.describeBytes(2_500_000_000), "2.50 GB")
     }
 
+    // A cover is tens of KB; "0.0 MB" didn't say whether one had actually arrived.
+    func testDescribeBytesUsesKilobytesBelowAMegabyte() {
+        XCTAssertEqual(DownloadThroughput.describeBytes(45_000), "45 KB")
+    }
+
+    // A response without Content-Length reports -1, which was rendering as "-0.0 MB".
+    func testDescribeBytesHandlesUnknownLength() {
+        XCTAssertEqual(DownloadThroughput.describeBytes(-1), "unknown size")
+    }
+
     func testPercentIsNilWithoutAContentLength() {
         XCTAssertNil(DownloadThroughput.percent(written: 100, expected: 0))
         XCTAssertNil(DownloadThroughput.percent(written: 100, expected: -1))
