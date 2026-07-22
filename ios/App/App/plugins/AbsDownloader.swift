@@ -480,8 +480,10 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         var rateMessage: String?
         var aggregateMessage: String?
         if var dl = activeDownloads[partId] {
-            // Accumulate before lastBytesWritten is overwritten.
-            let delta = max(0, totalBytesWritten - dl.lastBytesWritten)
+            // Accumulate before lastBytesWritten is overwritten. A task's FIRST report carries whatever a
+            // previous attempt already transferred, which is not throughput happening now.
+            let delta = dl.hasReportedBytes ? max(0, totalBytesWritten - dl.lastBytesWritten) : 0
+            dl.hasReportedBytes = true
             aggregateBytesWritten += delta
             if aggregateWindowStart == nil {
                 aggregateWindowStart = now
@@ -509,6 +511,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 dl.firstByteAt = now
                 dl.lastRateLogAt = now
                 dl.bytesAtLastRateLog = totalBytesWritten
+                dl.bytesAtFirstByte = totalBytesWritten
                 firstByteMessage = String(format: "First byte for %@ after %.1fs (expecting %@)",
                                           dl.filename,
                                           now.timeIntervalSince(dl.startedAt),
@@ -518,7 +521,8 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 let intervalBytes = totalBytesWritten - dl.bytesAtLastRateLog
                 let elapsed = now.timeIntervalSince(dl.firstByteAt ?? dl.startedAt)
                 let current = DownloadThroughput.megabytesPerSecond(bytes: intervalBytes, seconds: intervalSeconds)
-                let average = DownloadThroughput.megabytesPerSecond(bytes: totalBytesWritten, seconds: elapsed)
+                // Only bytes THIS task moved — a resumed task's head start isn't throughput.
+                let average = DownloadThroughput.megabytesPerSecond(bytes: totalBytesWritten - dl.bytesAtFirstByte, seconds: elapsed)
                 var line = "\(dl.filename): \(DownloadThroughput.describeBytes(totalBytesWritten))"
                 if let expected = DownloadThroughput.percent(written: totalBytesWritten, expected: totalBytesExpectedToWrite) {
                     line += String(format: " / %@ (%.1f%%)", DownloadThroughput.describeBytes(totalBytesExpectedToWrite), expected)
@@ -1094,6 +1098,11 @@ struct ActiveDownload {
     var firstByteAt: Date?
     var lastRateLogAt: Date?
     var bytesAtLastRateLog: Int64 = 0
+    /// totalBytesWritten when this task first reported. A resumed task starts with the bytes an earlier
+    /// attempt already transferred, and counting those as though this task moved them inflates both the
+    /// average and the aggregate (a relaunch showed "12.13 MB/s" that never happened).
+    var bytesAtFirstByte: Int64 = 0
+    var hasReportedBytes = false
 }
 
 enum LibraryItemDownloadError: String, Error {
