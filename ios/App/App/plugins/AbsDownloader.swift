@@ -70,11 +70,13 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     private let downloadQueueLock = NSLock()
     private var pendingDownloadTasks: [PendingDownload] = []
     private var activeDownloads: [String: ActiveDownload] = [:] // partId -> live state
-    // EXPERIMENT (2026-07-22): a background URLSession delivered ~0.20 MB/s to each of 3 transfers —
-    // byte-identical totals at every sample, i.e. the system daemon hands out fixed chunks in lockstep —
-    // while the same server serves 30-40 MB/s to a desktop browser. Raising this distinguishes a
-    // PER-TASK throttle (aggregate should scale with concurrency) from a PER-SESSION one (it won't).
-    private let maxConcurrentDownloads = 6
+    // Measured 2026-07-22: the background session's throttle is PER-SESSION, not per-task. Three
+    // transfers got ~0.20 MB/s each, six got ~0.10 MB/s each, aggregate pinned at ~0.6 MB/s either way,
+    // while the same server serves 30-40 MB/s to a desktop browser. So concurrency buys nothing here;
+    // back to 3, which keeps per-file rates (and ETAs) as high as the cap allows.
+    private let maxConcurrentDownloads = 3
+
+    private var hasRunSpeedProbe = false
 
     // Aggregate throughput sampling, so total rate is directly readable rather than summed by hand.
     private var aggregateBytesWritten: Int64 = 0
@@ -114,6 +116,43 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         for task in duplicates { task.cancel() }
 
         if hasActive { startStallWatchdogIfNeeded() }
+    }
+
+    /// One-shot diagnostic: fetch a few MB of a real track over a DEFAULT (in-process) URLSession and
+    /// report the rate, alongside whether the server honours a Range request.
+    ///
+    /// Two open questions, one request. The background session is pinned at ~0.6 MB/s aggregate while a
+    /// desktop browser gets 30-40 MB/s from the same server — but Low Data Mode or a slow link would
+    /// look identical from inside that session, so this measures the same device on the same network at
+    /// the same moment. And the Range status decides whether transfers can be handed between sessions
+    /// at all: without 206 support, any handoff restarts the file from zero.
+    private func runForegroundSpeedProbe(url: URL) {
+        guard !hasRunSpeedProbe else { return }
+        hasRunSpeedProbe = true
+
+        let probeBytes = 8 * 1024 * 1024
+        var request = URLRequest(url: url)
+        request.setValue("bytes=0-\(probeBytes - 1)", forHTTPHeaderField: "Range")
+
+        let probeSession = URLSession(configuration: .default)
+        let startedAt = Date()
+        probeSession.dataTask(with: request) { data, response, error in
+            defer { probeSession.finishTasksAndInvalidate() }
+            let elapsed = Date().timeIntervalSince(startedAt)
+            if let error = error {
+                AbsLogger.error(message: "PROBE failed: \(error.localizedDescription)")
+                return
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let bytes = Int64(data?.count ?? 0)
+            let rate = DownloadThroughput.megabytesPerSecond(bytes: bytes, seconds: elapsed)
+            AbsLogger.info(message: String(format: "PROBE (default session): HTTP %d, %@ in %.2fs = %@ — range supported: %@",
+                                           status,
+                                           DownloadThroughput.describeBytes(bytes),
+                                           elapsed,
+                                           DownloadThroughput.describeRate(rate),
+                                           status == 206 ? "YES" : "NO"))
+        }.resume()
     }
 
     /// Tear down everything in flight or queued for these parts, so a replaced download can't leave
@@ -266,7 +305,11 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
             }
 
             // Genuine in-flight download — re-add it to the JS store.
-            try? self.notifyListeners("onDownloadItem", data: item.asDictionary())
+            //
+            // retainUntilConsumed matters here: load() runs at plugin-init, ~125ms BEFORE the web layer
+            // mounts and registers its listeners, so a plain notifyListeners is dropped on the floor and
+            // the resumed download never appears in the downloads list even though it is running.
+            try? self.notifyListeners("onDownloadItem", data: item.asDictionary(), retainUntilConsumed: true)
             restartTasks.append(contentsOf: itemRestarts)
             if allDone, let firstPartId = item.downloadItemParts.first?.id {
                 partIdsToFinalize.append(firstPartId)
@@ -879,6 +922,10 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         downloadQueueLock.unlock()
 
         AbsLogger.info(message: "Added \(tasks.count) tasks to download queue. Starting downloads...")
+
+        if let probeURL = tasks.first?.task.originalRequest?.url {
+            runForegroundSpeedProbe(url: probeURL)
+        }
 
         // Start downloading (up to maxConcurrentDownloads at a time)
         startNextDownloadInQueue()
