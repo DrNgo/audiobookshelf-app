@@ -1,0 +1,81 @@
+//
+//  DownloadRetryPolicyTests.swift
+//  AudiobookshelfUnitTests
+//
+
+import XCTest
+@testable import Audiobookshelf
+
+final class DownloadRetryPolicyTests: XCTestCase {
+
+    private func urlError(_ code: Int) -> NSError {
+        NSError(domain: NSURLErrorDomain, code: code)
+    }
+
+    // THE regression this whole change exists for: a real device log showed five download parts
+    // permanently failed with "cannot parse response" while their retry budgets were untouched,
+    // because the old allowlist of nine codes didn't include -1017.
+    func testCannotParseResponseIsRecoverable() {
+        XCTAssertTrue(DownloadRetryPolicy.isRecoverable(urlError(NSURLErrorCannotParseResponse)))
+    }
+
+    func testTransientNetworkErrorsAreRecoverable() {
+        let transient = [
+            NSURLErrorTimedOut,
+            NSURLErrorNetworkConnectionLost,
+            NSURLErrorNotConnectedToInternet,
+            NSURLErrorCannotConnectToHost,
+            NSURLErrorCannotFindHost,
+            NSURLErrorDNSLookupFailed,
+            NSURLErrorResourceUnavailable,
+            NSURLErrorBadServerResponse,
+            NSURLErrorZeroByteResource,
+            NSURLErrorSecureConnectionFailed,
+            NSURLErrorRequestBodyStreamExhausted,
+        ]
+        for code in transient {
+            XCTAssertTrue(DownloadRetryPolicy.isRecoverable(urlError(code)),
+                          "URL error \(code) should be retried, not treated as fatal")
+        }
+    }
+
+    // The denylist: things retrying can never fix.
+    func testTerminalErrorsAreNotRecoverable() {
+        let terminal = [
+            NSURLErrorCancelled,
+            NSURLErrorBadURL,
+            NSURLErrorUnsupportedURL,
+            NSURLErrorUserAuthenticationRequired,
+            NSURLErrorNoPermissionsToReadFile,
+            NSURLErrorCannotWriteToFile,
+            NSURLErrorCannotCreateFile,
+            NSURLErrorCannotMoveFile,
+            NSURLErrorFileDoesNotExist,
+            NSURLErrorDataLengthExceedsMaximum,
+        ]
+        for code in terminal {
+            XCTAssertFalse(DownloadRetryPolicy.isRecoverable(urlError(code)),
+                           "URL error \(code) is terminal and should not be retried")
+        }
+    }
+
+    func testNonUrlDomainErrorsAreNotRecoverable() {
+        XCTAssertFalse(DownloadRetryPolicy.isRecoverable(
+            NSError(domain: NSPOSIXErrorDomain, code: 28))) // ENOSPC — disk full
+    }
+
+    // Retrying instantly hammers a struggling server, and on a sleeping device it can burn every
+    // attempt within seconds (raised in review of PR #1924).
+    func testBackoffGrowsAndIsCapped() {
+        XCTAssertEqual(DownloadRetryPolicy.backoffDelay(forAttempt: 1), 2)
+        XCTAssertEqual(DownloadRetryPolicy.backoffDelay(forAttempt: 2), 4)
+        XCTAssertEqual(DownloadRetryPolicy.backoffDelay(forAttempt: 3), 8)
+        XCTAssertEqual(DownloadRetryPolicy.backoffDelay(forAttempt: 4), 16)
+        XCTAssertEqual(DownloadRetryPolicy.backoffDelay(forAttempt: 5), 32)
+        XCTAssertEqual(DownloadRetryPolicy.backoffDelay(forAttempt: 99), 60)
+    }
+
+    func testFirstAttemptHasNoDelay() {
+        XCTAssertEqual(DownloadRetryPolicy.backoffDelay(forAttempt: 0), 0)
+    }
+}

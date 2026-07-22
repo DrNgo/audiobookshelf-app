@@ -43,11 +43,21 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     // Stall detection + retry tuning
     private let stallTimeout: TimeInterval = 30     // no bytes for this long => treat as stalled
     private let stallCheckInterval: TimeInterval = 10
-    private let maxRetriesPerPart = 3
-    private var retryCounts: [String: Int] = [:]    // partId -> retries already used (guarded by downloadQueueLock)
+    // A task adopted from a previous launch, or one whose clock we just re-baselined after a suspension,
+    // hasn't had a chance to report progress yet. Without this it was cancelled 30s after every launch.
+    private let stallGracePeriod: TimeInterval = 90
+    // Bytes a task must transfer before we consider the connection healthy and hand the part a fresh
+    // retry budget. Otherwise three unrelated blips spread over a multi-hour download kill it.
+    private let healthyTransferThreshold: Int64 = 1_000_000
     private var stalledPartIds: Set<String> = []    // parts we cancelled on purpose to retry (guarded by downloadQueueLock)
+    private var discardedTaskIds: Set<Int> = []     // duplicate tasks we cancelled; their completions carry no meaning (guarded by downloadQueueLock)
     private var finalizedItemIds: Set<String> = []  // items already finalized, so concurrent part completions finalize once (guarded by downloadQueueLock)
     private var stallWatchdogTimer: Timer?
+    private var lastWatchdogTick: Date?             // main queue only
+
+    // Retry attempts + resume data that must outlive the process. See DownloadStateStore.
+    private lazy var stateStore = DownloadStateStore(
+        directory: AbsDownloader.downloadsDirectory.appendingPathComponent(".download-state"))
 
     // Progress-write throttling (avoid a Realm write + bridge call on every byte callback)
     private let progressThrottleLock = NSLock()
@@ -65,15 +75,32 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
 
     private func startNextDownloadInQueue() {
         downloadQueueLock.lock()
+        var duplicates: [URLSessionDownloadTask] = []
         // Start downloads up to the max concurrent limit
         while activeDownloads.count < maxConcurrentDownloads && !pendingDownloadTasks.isEmpty {
             let next = pendingDownloadTasks.removeFirst()
-            activeDownloads[next.partId] = ActiveDownload(partId: next.partId, filename: next.filename, downloadURL: next.downloadURL, task: next.task, lastBytesWritten: 0, lastProgressAt: Date())
+
+            // Never overwrite a live entry. Part ids are deterministic (base64 of the destination path),
+            // so a re-requested or reconciled item produces pending tasks for parts that may already be
+            // in flight. Assigning over them silently orphaned the running task — it kept downloading to
+            // the same destination, untracked, while its completion callback mutated the new task's
+            // bookkeeping. Drop the duplicate instead.
+            guard activeDownloads[next.partId] == nil else {
+                AbsLogger.info(message: "Skipping duplicate download task for \(next.filename) — already in flight")
+                discardedTaskIds.insert(next.task.taskIdentifier)
+                duplicates.append(next.task)
+                continue
+            }
+
+            activeDownloads[next.partId] = ActiveDownload(partId: next.partId, filename: next.filename, downloadURL: next.downloadURL, task: next.task, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: nil, clearedRetryState: false)
             AbsLogger.info(message: "Starting download for \(next.filename) (\(activeDownloads.count)/\(maxConcurrentDownloads) active, \(pendingDownloadTasks.count) pending)")
             next.task.resume()
         }
         let hasActive = !activeDownloads.isEmpty
         downloadQueueLock.unlock()
+
+        // Cancel outside the lock; cancel() delivers didCompleteWithError on the delegate queue.
+        for task in duplicates { task.cancel() }
 
         if hasActive { startStallWatchdogIfNeeded() }
     }
@@ -99,7 +126,10 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 if self.activeDownloads[partId] == nil {
                     switch dl.state {
                     case .running, .suspended:
-                        self.activeDownloads[partId] = ActiveDownload(partId: partId, filename: partId, downloadURL: url, task: dl, lastBytesWritten: 0, lastProgressAt: Date())
+                        // Grace period: an adopted background task can take a while to start delivering
+                        // progress callbacks again. Without it the watchdog cancelled these ~30s after
+                        // every single launch, burning retries on downloads that were perfectly fine.
+                        self.activeDownloads[partId] = ActiveDownload(partId: partId, filename: partId, downloadURL: url, task: dl, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: Date().addingTimeInterval(self.stallGracePeriod), clearedRetryState: false)
                         if dl.state == .suspended { dl.resume() }
                         adopted += 1
                         adoptedPartIds.insert(partId)
@@ -144,14 +174,28 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 allDone = false
                 if adoptedPartIds.contains(part.id) { continue } // still downloading via an adopted task
                 guard let url = part.downloadURL else { continue }
-                // Orphaned or previously-failed part: reset and re-download from scratch.
-                try? realm.write {
-                    part.progress = 0
-                    part.bytesDownloaded = 0
-                    part.failed = false
-                    part.completed = false
+
+                // Continue from where the previous run left off when we have resume data. This used to
+                // unconditionally reset progress to 0 and re-download the whole file, so a book too big
+                // to finish in one app session could never finish at all — every relaunch threw the
+                // partial transfer away.
+                let task: URLSessionDownloadTask
+                if let resumeData = self.stateStore.resumeData(forPartId: part.id) {
+                    task = self.session.downloadTask(withResumeData: resumeData)
+                    try? realm.write {
+                        part.failed = false
+                        part.completed = false
+                    }
+                    AbsLogger.info(message: "Resuming \(part.filename ?? part.id) from saved resume data")
+                } else {
+                    task = self.session.downloadTask(with: url)
+                    try? realm.write {
+                        part.progress = 0
+                        part.bytesDownloaded = 0
+                        part.failed = false
+                        part.completed = false
+                    }
                 }
-                let task = self.session.downloadTask(with: url)
                 task.taskDescription = part.id
                 itemRestarts.append(PendingDownload(partId: part.id, filename: part.filename ?? part.id, downloadURL: url, task: task))
             }
@@ -185,18 +229,6 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
             downloadQueueLock.unlock()
             AbsLogger.info(message: "Reconciled \(restartTasks.count) orphaned download part(s) from a previous session")
             startNextDownloadInQueue()
-        }
-    }
-
-    private func isRecoverableError(_ error: NSError) -> Bool {
-        guard error.domain == NSURLErrorDomain else { return false }
-        switch error.code {
-        case NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost, NSURLErrorNotConnectedToInternet,
-             NSURLErrorCannotConnectToHost, NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed,
-             NSURLErrorResourceUnavailable, NSURLErrorInternationalRoamingOff, NSURLErrorDataNotAllowed:
-            return true
-        default:
-            return false
         }
     }
 
@@ -244,9 +276,21 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         // Atomically release the concurrency slot and read state, so a finished/failed/stalled
         // task can NEVER permanently occupy a slot and jam the queue.
         downloadQueueLock.lock()
+        // A duplicate we deliberately cancelled. Its completion says nothing about the part — and must
+        // not be read as a failure, since the real task may already have finished and cleared the entry.
+        if discardedTaskIds.remove(task.taskIdentifier) != nil {
+            downloadQueueLock.unlock()
+            return
+        }
+        // A superseded duplicate — or an orphan left over from an earlier launch — must not clobber the
+        // task that is actually downloading this part, or release its concurrency slot.
+        if let registered = activeDownloads[partId], registered.task.taskIdentifier != task.taskIdentifier {
+            downloadQueueLock.unlock()
+            AbsLogger.info(message: "Ignoring completion of a superseded task for \(registered.filename)")
+            return
+        }
         let active = activeDownloads.removeValue(forKey: partId)
         let intentionalStallCancel = stalledPartIds.remove(partId) != nil
-        let retries = retryCounts[partId] ?? 0
         downloadQueueLock.unlock()
         progressThrottleLock.lock()
         lastPersistAt.removeValue(forKey: partId)
@@ -254,9 +298,15 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
 
         if let error = error as NSError? {
             let resumeData = error.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
-            let recoverable = intentionalStallCancel || isRecoverableError(error)
+            // Persist resume data so a relaunch continues the transfer instead of starting the file over.
+            if let resumeData = resumeData {
+                stateStore.saveResumeData(resumeData, forPartId: partId)
+            }
 
-            if recoverable && retries < maxRetriesPerPart {
+            let attemptsUsed = stateStore.attempts(forPartId: partId)
+            let recoverable = intentionalStallCancel || DownloadRetryPolicy.isRecoverable(error)
+
+            if recoverable && attemptsUsed < DownloadRetryPolicy.maxAttemptsPerPart {
                 let url = active?.downloadURL ?? task.originalRequest?.url
                 let retryTask: URLSessionDownloadTask? = {
                     if let resumeData = resumeData { return session.downloadTask(withResumeData: resumeData) }
@@ -265,23 +315,30 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 }()
                 if let retryTask = retryTask, let resolvedURL = url ?? retryTask.originalRequest?.url {
                     retryTask.taskDescription = partId
-                    downloadQueueLock.lock()
-                    retryCounts[partId] = retries + 1
-                    downloadQueueLock.unlock()
-                    AbsLogger.info(message: "Retrying \(active?.filename ?? partId) — attempt \(retries + 1)/\(maxRetriesPerPart) (resume=\(resumeData != nil), stalled=\(intentionalStallCancel))")
-                    enqueuePendingDownload(PendingDownload(partId: partId, filename: active?.filename ?? partId, downloadURL: resolvedURL, task: retryTask))
+                    let filename = active?.filename ?? partId
+                    let attempt = stateStore.recordAttempt(forPartId: partId)
+                    let delay = DownloadRetryPolicy.backoffDelay(forAttempt: attempt)
+                    AbsLogger.info(message: "Retrying \(filename) — attempt \(attempt)/\(DownloadRetryPolicy.maxAttemptsPerPart) in \(Int(delay))s (resume=\(resumeData != nil), stalled=\(intentionalStallCancel))")
+                    let pending = PendingDownload(partId: partId, filename: filename, downloadURL: resolvedURL, task: retryTask)
+                    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay) { [weak self] in
+                        self?.enqueuePendingDownload(pending)
+                        self?.startNextDownloadInQueue()
+                    }
+                    // Don't leave the slot idle for the length of the backoff.
                     startNextDownloadInQueue()
                     return
                 }
             }
 
-            // Out of retries or unrecoverable — mark failed and let the item resolve so the UI reverts
-            AbsLogger.error(message: "Download failed for \(active?.filename ?? partId): \(error.localizedDescription)")
-            clearRetryCount(partId)
+            // Out of retries or unrecoverable — mark failed and let the item resolve so the UI reverts.
+            // Drop the stored state too: the part is terminal, and a re-download should start clean
+            // rather than inherit an exhausted budget (which would fail it again instantly).
+            AbsLogger.error(message: "Download failed for \(active?.filename ?? partId) after \(attemptsUsed) retries: \(error.localizedDescription)")
+            stateStore.clear(forPartId: partId)
             markPartFailed(partId)
             checkItemCompletion(forPartId: partId)
         } else {
-            clearRetryCount(partId)
+            stateStore.clear(forPartId: partId)
             checkItemCompletion(forPartId: partId)
         }
 
@@ -293,12 +350,23 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
 
         // Feed the stall watchdog on EVERY callback (not throttled) so it sees real forward progress
         downloadQueueLock.lock()
+        var becameHealthy = false
         if var dl = activeDownloads[partId] {
             dl.lastBytesWritten = totalBytesWritten
             dl.lastProgressAt = Date()
+            dl.graceUntil = nil // it's reporting now; it no longer needs the benefit of the doubt
+            if !dl.clearedRetryState && totalBytesWritten >= healthyTransferThreshold {
+                dl.clearedRetryState = true
+                becameHealthy = true
+            }
             activeDownloads[partId] = dl
         }
         downloadQueueLock.unlock()
+
+        // This task is moving real data, so the connection recovered. Hand the part a fresh retry
+        // budget — otherwise a few unrelated blips spread across a multi-hour download add up and kill
+        // it. (Also drops now-stale resume data; a live task regenerates it if cancelled.)
+        if becameHealthy { stateStore.clear(forPartId: partId) }
 
         // Throttle the Realm write + JS bridge notify so we don't churn on every packet
         let isFinalChunk = totalBytesExpectedToWrite > 0 && totalBytesWritten >= totalBytesExpectedToWrite
@@ -376,12 +444,6 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         return false
     }
 
-    private func clearRetryCount(_ partId: String) {
-        downloadQueueLock.lock()
-        retryCounts.removeValue(forKey: partId)
-        downloadQueueLock.unlock()
-    }
-
     // MARK: - Stall watchdog
 
     private func startStallWatchdogIfNeeded() {
@@ -394,12 +456,42 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     }
 
     private func checkForStalledDownloads(_ timer: Timer) {
-        downloadQueueLock.lock()
         let now = Date()
-        let stalled = activeDownloads.values.filter { now.timeIntervalSince($0.lastProgressAt) > stallTimeout }
-        for dl in stalled { stalledPartIds.insert(dl.partId) }
+        let previousTick = lastWatchdogTick
+        lastWatchdogTick = now
+
+        downloadQueueLock.lock()
+        let candidates = activeDownloads.values.map {
+            StallCandidate(partId: $0.partId, lastProgressAt: $0.lastProgressAt, graceUntil: $0.graceUntil)
+        }
+        let decision = StallEvaluator.evaluate(now: now, lastTick: previousTick,
+                                               checkInterval: stallCheckInterval,
+                                               stallTimeout: stallTimeout,
+                                               candidates: candidates)
+
+        var stalled: [ActiveDownload] = []
+        switch decision {
+        case .rebaseline:
+            // The app was suspended, so these timestamps say nothing about the transfers. Restart their
+            // clocks (with grace, since callbacks queued during suspension take a moment to drain)
+            // instead of cancelling every healthy download the instant the user comes back.
+            for (partId, var dl) in activeDownloads {
+                dl.lastProgressAt = now
+                dl.graceUntil = now.addingTimeInterval(stallGracePeriod)
+                activeDownloads[partId] = dl
+            }
+        case .cancel(let partIds):
+            let ids = Set(partIds)
+            stalled = activeDownloads.values.filter { ids.contains($0.partId) }
+            for dl in stalled { stalledPartIds.insert(dl.partId) }
+        }
         let idle = activeDownloads.isEmpty && pendingDownloadTasks.isEmpty
         downloadQueueLock.unlock()
+
+        if case .rebaseline = decision {
+            AbsLogger.info(message: "Watchdog resumed after a gap — re-baselining \(candidates.count) download(s) instead of treating them as stalled")
+            return
+        }
 
         for dl in stalled {
             AbsLogger.error(message: "Stall detected on \(dl.filename): no data for >\(Int(stallTimeout))s — cancelling to retry")
@@ -410,6 +502,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         if idle && stalled.isEmpty {
             timer.invalidate()
             if self.stallWatchdogTimer == timer { self.stallWatchdogTimer = nil }
+            self.lastWatchdogTick = nil
             AbsLogger.info(message: "No active downloads — stopping stall watchdog")
         }
     }
@@ -454,7 +547,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         downloadQueueLock.unlock()
         guard !alreadyFinalized else { return }
 
-        for p in item.downloadItemParts { clearRetryCount(p.id) }
+        for p in item.downloadItemParts { stateStore.clear(forPartId: p.id) }
 
         // Freeze so the item can be handed to the (main-queue) finalizer safely across threads.
         let frozen = item.freeze()
@@ -591,6 +684,17 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
             throw LibraryItemDownloadError.unknownMediaType
         }
         
+        // Don't start a second copy of a download that is already running. DownloadItem ids and part ids
+        // are both deterministic, so a repeat request builds tasks for the very same parts — which then
+        // ran concurrently against the same destination files, overwriting each other's queue entries
+        // and leaving orphaned tasks running untracked.
+        let expectedItemId = episodeId.map { "\(item.id)-\($0)" } ?? item.id
+        if let existing = Database.shared.getDownloadItem(downloadItemId: expectedItemId), !existing.isDoneDownloading() {
+            AbsLogger.info(message: "Download already in progress for \(existing.itemTitle ?? expectedItemId) — not starting a second one")
+            try? self.notifyListeners("onDownloadItem", data: existing.asDictionary())
+            return
+        }
+
         // Queue up everything for downloading
         let downloadItem = DownloadItem(libraryItem: item, episodeId: episodeId, server: Store.serverConfig!)
         var tasks = [DownloadItemPartTask]()
@@ -773,6 +877,11 @@ struct ActiveDownload {
     let task: URLSessionDownloadTask
     var lastBytesWritten: Int64
     var lastProgressAt: Date
+    /// Exempt from stall detection until this time — set for tasks adopted from a previous launch and
+    /// for downloads re-baselined after the app was suspended, neither of which has reported yet.
+    var graceUntil: Date?
+    /// Whether this task has transferred enough to have earned the part a fresh retry budget.
+    var clearedRetryState: Bool
 }
 
 enum LibraryItemDownloadError: String, Error {
