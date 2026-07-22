@@ -1182,28 +1182,31 @@ Message: `feat(ios): sliding-window caption scheduler`
 - Consumes: `SegmentProducing`, `TranscriptionRequest`, `CaptionSegment`, `CaptionWord`
 - Produces: `@available(iOS 26.0, *) actor SpeechTranscriptionEngine: SegmentProducing`, plus `static func isAvailable(locale: Locale) async -> Bool` and `static func prepareModel(locale: Locale) async throws`
 
-> **⚠️ HARD GATE — read before writing any code.** This task uses `SpeechAnalyzer`/`SpeechTranscriber`, new in iOS 26, which this plan has **not** compiled against. External review (Codex) flagged that several symbol names in the reference code below likely differ from Apple's shipping API. **The code in Step 2 is a structural reference, not verified source.** You MUST complete Step 1 and reconcile every Speech-framework symbol against the actual SDK before the Step 2 code is considered authoritative. Do not treat a green build as proof of correctness until the fixture test (Step 5) and device pass (Task 9) confirm real timed output.
+> **iOS 26 Speech API — reconciled against Apple's documentation (2026-07-22).** The signatures below were verified against `developer.apple.com/documentation/speech` (the doc-JSON declarations, which carry exact types). They are believed correct, but this plan still has not *compiled* against the iOS 26 SDK, so Step 1 remains a build-time confirmation gate. The one genuinely open detail is row 7 — how the `audioTimeRange` attribute is read off an `AttributedString` run — which Apple's rendered docs don't spell out; resolve it in Step 1.
 
-- [ ] **Step 1: Verify the SDK symbols before writing code**
+Verified declarations (from Apple docs):
+
+- `SpeechAnalyzer` is `final actor`. `init(modules:options:)`. Autonomous feed: `func start(inputSequence:)`. `func bestAvailableAudioFormat(compatibleWith modules: [any SpeechModule]) async -> AVAudioFormat?` — **static on `SpeechAnalyzer`**. Finish: `func finalizeAndFinishThroughEndOfInput() async throws` and `func finalizeAndFinish(through: CMTime) async throws`.
+- `SpeechTranscriber` is `final class`. `convenience init(locale:transcriptionOptions:reportingOptions:attributeOptions:)` with `Set<…>` option args, and `init(locale:preset:)`. `static var supportedLocales: [Locale] { get async }` and `static var installedLocales: [Locale] { get async }`. `var results: some Sendable & AsyncSequence<SpeechTranscriber.Result, any Error>`.
+- `SpeechTranscriber.Result`: `var text: AttributedString`, `var range`, `var isFinal: Bool`, `var alternatives`, `resultsFinalizationTime`.
+- `AssetInventory.assetInstallationRequest(supporting modules: [any SpeechModule]) async throws -> AssetInstallationRequest?`; `AssetInstallationRequest.downloadAndInstall()`. Allocation limits: `reserve(locale:)` / `release(reservedLocale:)`.
+- `AnalyzerInput`: `init(buffer:)` and `init(buffer:bufferStartTime:)`.
+
+- [ ] **Step 1: Confirm against the installed SDK and resolve the run-attribute accessor**
 
 ```bash
 xcrun --sdk iphoneos --show-sdk-path
 ```
 
-Open the Speech framework interface in Xcode (⇧⌘O → `SpeechTranscriber`, `SpeechAnalyzer`, `AnalyzerInput`, `AssetInventory`) and also the WWDC25 sample ("Bring advanced speech-to-text to your app with SpeechAnalyzer"). For each row, write down the **actual** signature; the two columns are the candidates seen in the wild — pick whichever the SDK confirms, or a third if neither matches:
+Open the Speech interface in Xcode (⇧⌘O → each of `SpeechAnalyzer`, `SpeechTranscriber`, `SpeechTranscriber.Result`, `AnalyzerInput`, `AssetInventory`). Confirm the declarations above compile as written. The **one** thing to actively discover — the rendered docs don't show it — is **row 7: how to read the per-run audio time range**. `Result.text` is an `AttributedString` produced with `attributeOptions: [.audioTimeRange]`. The accessor is one of:
 
-| # | Symbol | Candidate A (this plan) | Candidate B (Apple docs / WWDC) |
-|---|---|---|---|
-| 1 | Transcriber init | `SpeechTranscriber(locale:transcriptionOptions:reportingOptions:attributeOptions:)` | `SpeechTranscriber(locale:preset:)` |
-| 2 | Locale availability | `SpeechTranscriber.supportedLocales` (async?) | `SpeechTranscriber.supportedLocale(equivalentTo:)` |
-| 3 | Model install | `AssetInventory.assetInstallationRequest(supporting:)` → `.downloadAndInstall()` | (confirm exact names) |
-| 4 | Feed the analyzer | `analyzer.start(inputSequence:)` | `analyzer.analyzeSequence(_:)` |
-| 5 | Finalize | `finalizeAndFinishThroughEndOfInput()` | `finalizeAndFinish(through:)` / `cancelAndFinishNow()` |
-| 6 | Best audio format | `SpeechTranscriber.bestAvailableAudioFormat(compatibleWith:)` | `SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith:)` |
-| 7 | Result timing | `result.text.runs[].audioTimeRange` (CMTimeRange?) | (confirm run attribute key) |
-| 8 | `AnalyzerInput` init | `AnalyzerInput(buffer:)` | `AnalyzerInput(buffer:bufferStartTime:)` |
+- `run.audioTimeRange` (if the Speech attribute scope surfaces it as a dynamic member), or
+- `run[AttributeScopes.SpeechAttributes.AudioTimeRangeAttribute.self]` / a similarly-named key, or
+- iterate via `AttributedString.Runs` and read the attribute by its scope key.
 
-Adjust the Step 2 code to match. If Candidate B wins for rows 4/5/6, update those call sites accordingly — the surrounding structure does not change.
+Whichever the SDK exposes, it yields a `CMTimeRange` (or `CMTime` bounds). Wire it into `segment(from:)` in Step 2. If it turns out to be `CMTimeRange`, `.start.seconds` / `.end.seconds` are the field accesses used below.
+
+Everything else in Step 2 already matches Apple's declarations; the only edit expected from this step is row 7.
 
 - [ ] **Step 2: Write the engine**
 
@@ -1241,8 +1244,10 @@ actor SpeechTranscriptionEngine: SegmentProducing {
     }
 
     static func isAvailable(locale: Locale) async -> Bool {
-        // Row 2 of Step 1: confirm whether this is `supportedLocales` (a set) or
-        // `supportedLocale(equivalentTo:)` (returns the matching locale or nil).
+        // Verified: `supportedLocales` is `static var … [Locale] { get async }`.
+        // Includes locales that are downloadable-but-not-yet-installed, which is
+        // what we want — prepareModel() installs on demand. (`installedLocales`
+        // exists too, for skipping the download prompt when already present.)
         let supported = await SpeechTranscriber.supportedLocales
         return supported.contains { $0.identifier(.bcp47) == locale.identifier(.bcp47) }
     }
@@ -1285,8 +1290,9 @@ actor SpeechTranscriptionEngine: SegmentProducing {
                                             attributeOptions: [.audioTimeRange])
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
-        // Row 6: some docs place this on SpeechAnalyzer, some on SpeechTranscriber.
-        guard let analyzerFormat = await SpeechTranscriber.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+        // Verified: bestAvailableAudioFormat is static on SpeechAnalyzer (NOT
+        // on SpeechTranscriber) and returns AVAudioFormat?.
+        guard let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
             throw EngineError.unreadableAudio
         }
 
@@ -1305,18 +1311,24 @@ actor SpeechTranscriptionEngine: SegmentProducing {
             }
         }
 
-        // Row 4: `start(inputSequence:)` vs `analyzeSequence(_:)` — confirm in Step 1.
+        // Verified: autonomous-mode feed. (The file-based conveniences
+        // `analyzeSequence(from: AVAudioFile)` and `init(inputAudioFile:…)`
+        // exist but read to EOF and can't be bounded to our window, so we feed
+        // a ranged AVAssetReader sequence instead.)
         try await analyzer.start(inputSequence: inputStream)
 
+        // Finalized results only: filter on isFinal so provisional guesses (which
+        // we didn't even request volatile reporting for) never reach the UI.
         for try await result in transcriber.results {
             if Task.isCancelled { break }
+            guard result.isFinal else { continue }
             if let segment = Self.segment(from: result, bookOffset: request.bookOffset) {
                 continuation.yield(segment)
             }
         }
 
         feeder.cancel()
-        // Row 5: confirm the exact finalize selector.
+        // Verified: SpeechAnalyzer.finalizeAndFinishThroughEndOfInput() async throws.
         try await analyzer.finalizeAndFinishThroughEndOfInput()
     }
 
@@ -1451,6 +1463,10 @@ actor SpeechTranscriptionEngine: SegmentProducing {
 
         var words: [CaptionWord] = []
         for run in attributed.runs {
+            // ⚠️ ROW 7 — the single accessor to confirm in Step 1. `Result.text`
+            // was produced with `attributeOptions: [.audioTimeRange]`, so each run
+            // carries a CMTimeRange. If `run.audioTimeRange` doesn't resolve, read
+            // it via the Speech AttributeScope key (see Step 1) — same CMTimeRange.
             guard let range = run.audioTimeRange else { continue }
             let text = String(attributed[run.range].characters)
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
