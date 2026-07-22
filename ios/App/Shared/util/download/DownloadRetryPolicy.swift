@@ -55,6 +55,25 @@ enum DownloadRetryPolicy {
         }
     }
 
+    static func isSuccess(httpStatus: Int) -> Bool {
+        (200...299).contains(httpStatus)
+    }
+
+    /// Whether a non-2xx response is worth retrying.
+    ///
+    /// URLSession treats any HTTP response as a successful transfer — an error page or JSON body is just
+    /// the payload — so a download that doesn't check this writes that body to disk as the audio file.
+    /// A 401 is the case that matters most on a long transfer: access tokens are short-lived JWTs, so a
+    /// multi-gigabyte book can outlive the one it started with, and the retry rebuilds the URL with a
+    /// fresh token.
+    static func isRecoverable(httpStatus: Int) -> Bool {
+        switch httpStatus {
+        case 401, 403, 408, 425, 429: return true // auth refresh, or asked to back off
+        case 500...599: return true               // server-side, may pass
+        default: return false                     // 404/410/416/… won't fix themselves
+        }
+    }
+
     /// Exponential backoff, capped at a minute.
     ///
     /// Retries used to be re-queued immediately. That hammers a server which is already struggling, and

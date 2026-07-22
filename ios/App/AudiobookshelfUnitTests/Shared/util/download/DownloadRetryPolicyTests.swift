@@ -89,4 +89,29 @@ final class DownloadRetryPolicyTests: XCTestCase {
     func testFirstAttemptHasNoDelay() {
         XCTAssertEqual(DownloadRetryPolicy.backoffDelay(forAttempt: 0), 0)
     }
+
+    // A non-2xx response completes "successfully" as far as URLSession is concerned — the error page or
+    // JSON body is simply the payload. Downloads must classify it themselves, or that body gets written
+    // to disk as the audiobook track.
+    func testAuthAndThrottlingStatusesAreRetryable() {
+        for status in [401, 403, 408, 425, 429, 500, 502, 503, 504] {
+            XCTAssertTrue(DownloadRetryPolicy.isRecoverable(httpStatus: status),
+                          "HTTP \(status) should be retried — a refreshed token or a later attempt can fix it")
+        }
+    }
+
+    func testPermanentStatusesAreNotRetryable() {
+        for status in [400, 404, 410, 416, 451] {
+            XCTAssertFalse(DownloadRetryPolicy.isRecoverable(httpStatus: status),
+                           "HTTP \(status) will not fix itself")
+        }
+    }
+
+    func testSuccessfulStatusesAreNotFailures() {
+        for status in [200, 206] {
+            XCTAssertTrue(DownloadRetryPolicy.isSuccess(httpStatus: status))
+        }
+        XCTAssertFalse(DownloadRetryPolicy.isSuccess(httpStatus: 401))
+        XCTAssertFalse(DownloadRetryPolicy.isSuccess(httpStatus: 302))
+    }
 }

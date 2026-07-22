@@ -76,6 +76,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     // retry budget. Otherwise three unrelated blips spread over a multi-hour download kill it.
     private let healthyTransferThreshold: Int64 = 1_000_000
     private var stalledPartIds: Set<String> = []    // parts we cancelled on purpose to retry (guarded by downloadQueueLock)
+    private var invalidStatusPartIds: [String: Int] = [:] // partId -> non-2xx status seen (guarded by downloadQueueLock)
     private var discardedTaskIds: Set<Int> = []     // duplicate tasks we cancelled; their completions carry no meaning (guarded by downloadQueueLock)
     private var finalizedItemIds: Set<String> = []  // items already finalized, so concurrent part completions finalize once (guarded by downloadQueueLock)
     private var stallWatchdogTimer: Timer?
@@ -452,6 +453,23 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     // MARK: - Progress handling
 
     public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        // To URLSession any HTTP response is a successful transfer — an error page or JSON body is just
+        // the payload. Without this check that body was moved into place AS THE AUDIO FILE, so the
+        // download reported success and the track was garbage. The likely trigger is an access token
+        // expiring mid-transfer (401), which a multi-gigabyte book can easily outlive.
+        if let http = downloadTask.response as? HTTPURLResponse,
+           !DownloadRetryPolicy.isSuccess(httpStatus: http.statusCode) {
+            let partId = downloadTask.taskDescription
+            if let partId = partId {
+                downloadQueueLock.lock()
+                invalidStatusPartIds[partId] = http.statusCode
+                downloadQueueLock.unlock()
+            }
+            try? FileManager.default.removeItem(at: location)
+            AbsLogger.error(message: "Server returned HTTP \(http.statusCode) for \(partId ?? "?") — discarding the response body instead of saving it as the track")
+            return
+        }
+
         handleDownloadTaskUpdate(downloadTask: downloadTask) { downloadItem, downloadItemPart in
             let realm = try Realm()
             let partId = downloadItemPart.id
@@ -508,6 +526,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         let active = activeDownloads.removeValue(forKey: partId)
         let intentionalStallCancel = stalledPartIds.remove(partId) != nil
         let isMigrating = migratingPartIds.remove(partId) != nil
+        let invalidStatus = invalidStatusPartIds.removeValue(forKey: partId)
         downloadQueueLock.unlock()
 
         // Moved between sessions on purpose. Not a failure: no attempt consumed, no failure state.
@@ -531,56 +550,26 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 stateStore.saveResumeData(resumeData, forPartId: partId)
             }
 
-            let attemptsUsed = stateStore.attempts(forPartId: partId)
-            let recoverable = intentionalStallCancel || DownloadRetryPolicy.isRecoverable(error)
-
-            if recoverable && attemptsUsed < DownloadRetryPolicy.maxAttemptsPerPart {
-                // Rebuild from the database + current config rather than reusing the URL this task ran
-                // with. A task adopted from a previous launch carries whatever URL it was created with,
-                // so a corrupt one (see DownloadURLBuilder) would otherwise propagate through every
-                // retry forever — repairing the stored record alone was not enough.
-                let previousURL = active?.downloadURL ?? task.originalRequest?.url
-                let part = Database.shared.getDownloadItem(downloadItemPartId: partId)?
-                    .downloadItemParts.first(where: { $0.id == partId })
-                let url = part.flatMap { self.downloadURL(for: $0) } ?? previousURL
-
-                // Resume data embeds the request it came from, so it can only be reused if we're still
-                // talking to the same endpoint. After a repair it points at the dead URL.
-                let endpointUnchanged = DownloadURLBuilder.sameEndpoint(previousURL, url)
-                let usableResumeData = endpointUnchanged ? resumeData : nil
-                if !endpointUnchanged {
-                    AbsLogger.info(message: "Download endpoint for \(active?.filename ?? partId) changed to \(DownloadURLBuilder.redacted(url)) — restarting instead of resuming")
-                }
-
-                let retryTask: URLSessionDownloadTask? = {
-                    if let usableResumeData = usableResumeData { return preferredSession.downloadTask(withResumeData: usableResumeData) }
-                    if let url = url { return preferredSession.downloadTask(with: url) }
-                    return nil
-                }()
-                if let retryTask = retryTask, let resolvedURL = url ?? retryTask.originalRequest?.url {
-                    retryTask.taskDescription = partId
-                    let filename = active?.filename ?? partId
-                    let attempt = stateStore.recordAttempt(forPartId: partId)
-                    let delay = DownloadRetryPolicy.backoffDelay(forAttempt: attempt)
-                    AbsLogger.info(message: "Retrying \(filename) — attempt \(attempt)/\(DownloadRetryPolicy.maxAttemptsPerPart) in \(Int(delay))s (resume=\(usableResumeData != nil), stalled=\(intentionalStallCancel))")
-                    let pending = PendingDownload(partId: partId, filename: filename, downloadURL: resolvedURL, task: retryTask, usesForegroundSession: isAppInForeground)
-                    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay) { [weak self] in
-                        self?.enqueuePendingDownload(pending)
-                        self?.startNextDownloadInQueue()
-                    }
-                    // Don't leave the slot idle for the length of the backoff.
-                    startNextDownloadInQueue()
-                    return
-                }
-            }
-
-            // Out of retries or unrecoverable — mark failed and let the item resolve so the UI reverts.
-            // Drop the stored state too: the part is terminal, and a re-download should start clean
-            // rather than inherit an exhausted budget (which would fail it again instantly).
-            AbsLogger.error(message: "Download failed for \(active?.filename ?? partId) after \(attemptsUsed) retries: \(error.localizedDescription)")
-            stateStore.clear(forPartId: partId)
-            markPartFailed(partId)
-            checkItemCompletion(forPartId: partId)
+            retryOrFailPart(partId: partId,
+                            filename: active?.filename ?? partId,
+                            previousURL: active?.downloadURL ?? task.originalRequest?.url,
+                            resumeData: resumeData,
+                            recoverable: intentionalStallCancel || DownloadRetryPolicy.isRecoverable(error),
+                            stalled: intentionalStallCancel,
+                            failureDescription: error.localizedDescription)
+        } else if let status = invalidStatus {
+            // The transfer completed, but the server refused it — the body was an error page, and
+            // didFinishDownloadingTo already threw it away rather than saving it as the track.
+            //
+            // No resume data on purpose: replaying the request that produced the failure would just
+            // reproduce it, and a 401 specifically needs the URL rebuilt with a freshly refreshed token.
+            retryOrFailPart(partId: partId,
+                            filename: active?.filename ?? partId,
+                            previousURL: active?.downloadURL ?? task.originalRequest?.url,
+                            resumeData: nil,
+                            recoverable: DownloadRetryPolicy.isRecoverable(httpStatus: status),
+                            stalled: false,
+                            failureDescription: "server returned HTTP \(status)")
         } else {
             if let active = active {
                 let elapsed = Date().timeIntervalSince(active.startedAt)
@@ -755,6 +744,67 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
             return true
         }
         return false
+    }
+
+
+    /// Retry a part, or fail it permanently when it is out of attempts or the cause cannot fix itself.
+    ///
+    /// Shared by the transport-error path and the HTTP-status path so both get identical treatment:
+    /// a URL rebuilt against the current server config, exponential backoff, a persisted attempt count,
+    /// and resume data used only when it still points at the same endpoint.
+    private func retryOrFailPart(partId: String,
+                                 filename: String,
+                                 previousURL: URL?,
+                                 resumeData: Data?,
+                                 recoverable: Bool,
+                                 stalled: Bool,
+                                 failureDescription: String) {
+        let attemptsUsed = stateStore.attempts(forPartId: partId)
+
+        if recoverable && attemptsUsed < DownloadRetryPolicy.maxAttemptsPerPart {
+            // Rebuild from the database + current config rather than reusing the URL this task ran with.
+            // A task adopted from a previous launch carries whatever URL it was created with, so a
+            // corrupt one (see DownloadURLBuilder) would otherwise propagate through every retry
+            // forever — repairing the stored record alone was not enough. It also picks up a refreshed
+            // access token, which is what makes a 401 retry worth attempting.
+            let part = Database.shared.getDownloadItem(downloadItemPartId: partId)?
+                .downloadItemParts.first(where: { $0.id == partId })
+            let url = part.flatMap { self.downloadURL(for: $0) } ?? previousURL
+
+            // Resume data embeds the request it came from, so it can only be reused if we're still
+            // talking to the same endpoint. After a repair it points at the dead URL.
+            let endpointUnchanged = DownloadURLBuilder.sameEndpoint(previousURL, url)
+            let usableResumeData = endpointUnchanged ? resumeData : nil
+            if !endpointUnchanged && resumeData != nil {
+                AbsLogger.info(message: "Download endpoint for \(filename) changed to \(DownloadURLBuilder.redacted(url)) — restarting instead of resuming")
+            }
+
+            let retryTask: URLSessionDownloadTask? = {
+                if let usableResumeData = usableResumeData { return preferredSession.downloadTask(withResumeData: usableResumeData) }
+                if let url = url { return preferredSession.downloadTask(with: url) }
+                return nil
+            }()
+            if let retryTask = retryTask, let resolvedURL = url ?? retryTask.originalRequest?.url {
+                retryTask.taskDescription = partId
+                let attempt = stateStore.recordAttempt(forPartId: partId)
+                let delay = DownloadRetryPolicy.backoffDelay(forAttempt: attempt)
+                AbsLogger.info(message: "Retrying \(filename) — attempt \(attempt)/\(DownloadRetryPolicy.maxAttemptsPerPart) in \(Int(delay))s (resume=\(usableResumeData != nil), stalled=\(stalled)): \(failureDescription)")
+                let pending = PendingDownload(partId: partId, filename: filename, downloadURL: resolvedURL, task: retryTask, usesForegroundSession: isAppInForeground)
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay) { [weak self] in
+                    self?.enqueuePendingDownload(pending)
+                    self?.startNextDownloadInQueue()
+                }
+                return
+            }
+        }
+
+        // Out of retries or unrecoverable — mark failed and let the item resolve so the UI reverts.
+        // Drop the stored state too: the part is terminal, and a re-download should start clean rather
+        // than inherit an exhausted budget (which would fail it again instantly).
+        AbsLogger.error(message: "Download failed for \(filename) after \(attemptsUsed) retries: \(failureDescription)")
+        stateStore.clear(forPartId: partId)
+        markPartFailed(partId)
+        checkItemCompletion(forPartId: partId)
     }
 
     // MARK: - Stall watchdog
