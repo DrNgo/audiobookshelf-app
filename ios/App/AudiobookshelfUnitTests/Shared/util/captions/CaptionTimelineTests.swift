@@ -116,4 +116,14 @@ final class CaptionTimelineTests: XCTestCase {
     func testNextRequestReturnsNilPastEndOfBook() {
         XCTAssertNil(CaptionTimeline.nextRequest(playhead: 400, segments: [], tracks: tracks, windowAhead: 600))
     }
+
+    // A negative playhead must clamp to the first track, not over-read it.
+    func testNextRequestClampsNegativePlayhead() {
+        let r = CaptionTimeline.nextRequest(playhead: -50, segments: [], tracks: tracks, windowAhead: 600)
+        XCTAssertEqual(r?.localFileId, "f0")
+        XCTAssertEqual(r?.offsetInTrack ?? -1, 0, accuracy: 0.001)
+        XCTAssertEqual(r?.bookOffset ?? -1, 0, accuracy: 0.001)
+        // Must not exceed the 100s track even though the window is 600s.
+        XCTAssertEqual(r?.duration ?? -1, 100, accuracy: 0.001)
+    }
 }
