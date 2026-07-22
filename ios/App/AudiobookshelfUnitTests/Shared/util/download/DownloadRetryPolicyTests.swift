@@ -39,10 +39,21 @@ final class DownloadRetryPolicyTests: XCTestCase {
         }
     }
 
+    // Force-quitting the app makes iOS tear down the background session, completing every in-flight
+    // task with NSURLErrorCancelled (-999). Treating that as terminal permanently failed all five
+    // adopted parts of a book "after 0 retries" the instant it was reopened — observed on device.
+    //
+    // Every cancel this app issues deliberately is accounted for before the classifier is consulted:
+    // stall cancels set the intentional flag, duplicate cancels are filtered by task identifier, and
+    // there is no user-facing cancel-download path. So a -999 reaching here is the system, and the
+    // download should resume rather than die.
+    func testSystemCancellationIsRecoverable() {
+        XCTAssertTrue(DownloadRetryPolicy.isRecoverable(urlError(NSURLErrorCancelled)))
+    }
+
     // The denylist: things retrying can never fix.
     func testTerminalErrorsAreNotRecoverable() {
         let terminal = [
-            NSURLErrorCancelled,
             NSURLErrorBadURL,
             NSURLErrorUnsupportedURL,
             NSURLErrorUserAuthenticationRequired,

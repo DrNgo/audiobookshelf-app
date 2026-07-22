@@ -27,9 +27,15 @@ enum DownloadRetryPolicy {
         // Non-URL errors (POSIX ENOSPC, our own file-move failures) aren't transport blips.
         guard error.domain == NSURLErrorDomain else { return false }
 
+        // NOTE: NSURLErrorCancelled (-999) is deliberately NOT here. Force-quitting the app makes iOS
+        // tear down the background session and complete every in-flight task with -999; treating that
+        // as terminal permanently failed all five adopted parts of a book "after 0 retries" the moment
+        // it was reopened. Every cancel this app issues on purpose is already accounted for before this
+        // is consulted — stall cancels set the intentional flag, duplicate cancels are filtered by task
+        // identifier, and there is no user-facing cancel-download path — so a -999 arriving here is the
+        // system, and the transfer should be resumed.
         switch error.code {
-        case NSURLErrorCancelled,                    // deliberate stop; the stall-retry path handles its own cancels
-             NSURLErrorBadURL,
+        case NSURLErrorBadURL,
              NSURLErrorUnsupportedURL,
              NSURLErrorUserAuthenticationRequired,
              NSURLErrorUserCancelledAuthentication,
