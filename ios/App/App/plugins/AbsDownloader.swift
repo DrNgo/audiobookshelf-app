@@ -56,7 +56,9 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     private var lastWatchdogTick: Date?             // main queue only
 
     // Retry attempts + resume data that must outlive the process. See DownloadStateStore.
-    private lazy var stateStore = DownloadStateStore(
+    // Eagerly initialised: it's touched from both the session's delegate queue and the plugin call
+    // queue, and `lazy` initialisation is not thread-safe.
+    private let stateStore = DownloadStateStore(
         directory: AbsDownloader.downloadsDirectory.appendingPathComponent(".download-state"))
 
     // Progress-write throttling (avoid a Realm write + bridge call on every byte callback)
@@ -103,6 +105,30 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         for task in duplicates { task.cancel() }
 
         if hasActive { startStallWatchdogIfNeeded() }
+    }
+
+    /// Tear down everything in flight or queued for these parts, so a replaced download can't leave
+    /// tasks running against the old record's rows. Their completions are ignored (discardedTaskIds).
+    private func cancelInFlightDownloads(partIds: [String]) {
+        downloadQueueLock.lock()
+        var tasks: [URLSessionDownloadTask] = []
+        for partId in partIds {
+            if let active = activeDownloads.removeValue(forKey: partId) {
+                discardedTaskIds.insert(active.task.taskIdentifier)
+                tasks.append(active.task)
+            }
+            pendingDownloadTasks.removeAll { pending in
+                guard pending.partId == partId else { return false }
+                discardedTaskIds.insert(pending.task.taskIdentifier)
+                tasks.append(pending.task)
+                return true
+            }
+            stalledPartIds.remove(partId)
+        }
+        downloadQueueLock.unlock()
+
+        if !tasks.isEmpty { AbsLogger.info(message: "Cancelled \(tasks.count) in-flight task(s) for the replaced download") }
+        for task in tasks { task.cancel() }
     }
 
     /// Queue a part, unless it is already active or already queued.
@@ -723,19 +749,20 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         // are both deterministic, so a repeat request builds tasks for the very same parts — which then
         // ran concurrently against the same destination files, overwriting each other's queue entries
         // and leaving orphaned tasks running untracked.
+        // Tapping download means "download this book", so a leftover record must never block it. Earlier
+        // this returned early when a record existed, which left a wedged download permanently
+        // un-restartable — and it reported the wrong title, because a cross-linked row from the
+        // duplicate-overwrite bug can describe a different book entirely.
+        //
+        // Replacing it is also what makes the part ids safe to reuse: they're derived from the
+        // destination path, so a fresh queue would otherwise collide with the old record's rows.
         let expectedItemId = episodeId.map { "\(item.id)-\($0)" } ?? item.id
         if let existing = Database.shared.getDownloadItem(downloadItemId: expectedItemId) {
-            if existing.libraryItemId != item.id {
-                // The stored record doesn't describe the book being requested — a stale/corrupt row
-                // (the duplicate-overwrite bug could cross-link items). Blocking on it would leave the
-                // user permanently unable to download this book, so drop it and queue a fresh one.
-                AbsLogger.error(message: "Discarding stale download record under \(expectedItemId) (held \(existing.itemTitle ?? "?"))")
-                try? existing.delete()
-            } else if !existing.isDoneDownloading() {
-                AbsLogger.info(message: "Download already in progress for \(existing.itemTitle ?? expectedItemId) — not starting a second one")
-                try? self.notifyListeners("onDownloadItem", data: existing.asDictionary())
-                return
-            }
+            AbsLogger.info(message: "Replacing existing download record for \(existing.itemTitle ?? expectedItemId)")
+            let staleParts = Array(existing.downloadItemParts.map { $0.id })
+            cancelInFlightDownloads(partIds: staleParts)
+            for partId in staleParts { stateStore.clear(forPartId: partId) }
+            try? existing.delete()
         }
 
         // Queue up everything for downloading
