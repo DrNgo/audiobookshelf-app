@@ -94,7 +94,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 continue
             }
 
-            activeDownloads[next.partId] = ActiveDownload(partId: next.partId, filename: next.filename, downloadURL: next.downloadURL, task: next.task, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: nil, clearedRetryState: false)
+            activeDownloads[next.partId] = ActiveDownload(partId: next.partId, filename: next.filename, downloadURL: next.downloadURL, task: next.task, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: nil, clearedRetryState: false, startedAt: Date())
             AbsLogger.info(message: "Starting download for \(next.filename) → \(DownloadURLBuilder.redacted(next.task.originalRequest?.url ?? next.downloadURL)) (\(activeDownloads.count)/\(maxConcurrentDownloads) active, \(pendingDownloadTasks.count) pending)")
             next.task.resume()
         }
@@ -172,7 +172,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                         // Grace period: an adopted background task can take a while to start delivering
                         // progress callbacks again. Without it the watchdog cancelled these ~30s after
                         // every single launch, burning retries on downloads that were perfectly fine.
-                        self.activeDownloads[partId] = ActiveDownload(partId: partId, filename: partId, downloadURL: url, task: dl, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: Date().addingTimeInterval(self.stallGracePeriod), clearedRetryState: false)
+                        self.activeDownloads[partId] = ActiveDownload(partId: partId, filename: partId, downloadURL: url, task: dl, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: Date().addingTimeInterval(self.stallGracePeriod), clearedRetryState: false, startedAt: Date())
                         if dl.state == .suspended { dl.resume() }
                         adopted += 1
                         adoptedPartIds.insert(partId)
@@ -399,6 +399,17 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
             markPartFailed(partId)
             checkItemCompletion(forPartId: partId)
         } else {
+            if let active = active {
+                let elapsed = Date().timeIntervalSince(active.startedAt)
+                let waited = active.firstByteAt.map { $0.timeIntervalSince(active.startedAt) }
+                let rate = DownloadThroughput.megabytesPerSecond(bytes: active.lastBytesWritten, seconds: elapsed)
+                AbsLogger.info(message: String(format: "Finished %@: %@ in %.0fs (%@ avg%@)",
+                                               active.filename,
+                                               DownloadThroughput.describeBytes(active.lastBytesWritten),
+                                               elapsed,
+                                               DownloadThroughput.describeRate(rate),
+                                               waited.map { String(format: ", %.1fs to first byte", $0) } ?? ""))
+            }
             stateStore.clear(forPartId: partId)
             checkItemCompletion(forPartId: partId)
         }
@@ -410,19 +421,56 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         guard let partId = downloadTask.taskDescription else { return }
 
         // Feed the stall watchdog on EVERY callback (not throttled) so it sees real forward progress
+        let now = Date()
         downloadQueueLock.lock()
         var becameHealthy = false
+        var firstByteMessage: String?
+        var rateMessage: String?
         if var dl = activeDownloads[partId] {
             dl.lastBytesWritten = totalBytesWritten
-            dl.lastProgressAt = Date()
+            dl.lastProgressAt = now
             dl.graceUntil = nil // it's reporting now; it no longer needs the benefit of the doubt
             if !dl.clearedRetryState && totalBytesWritten >= healthyTransferThreshold {
                 dl.clearedRetryState = true
                 becameHealthy = true
             }
+
+            // Instrumentation: time-to-first-byte separates "the server is slow to start" from
+            // "the transfer itself is slow".
+            if dl.firstByteAt == nil {
+                dl.firstByteAt = now
+                dl.lastRateLogAt = now
+                dl.bytesAtLastRateLog = totalBytesWritten
+                firstByteMessage = String(format: "First byte for %@ after %.1fs (expecting %@)",
+                                          dl.filename,
+                                          now.timeIntervalSince(dl.startedAt),
+                                          DownloadThroughput.describeBytes(totalBytesExpectedToWrite))
+            } else if let lastLog = dl.lastRateLogAt, now.timeIntervalSince(lastLog) >= DownloadThroughput.logInterval {
+                let intervalSeconds = now.timeIntervalSince(lastLog)
+                let intervalBytes = totalBytesWritten - dl.bytesAtLastRateLog
+                let elapsed = now.timeIntervalSince(dl.firstByteAt ?? dl.startedAt)
+                let current = DownloadThroughput.megabytesPerSecond(bytes: intervalBytes, seconds: intervalSeconds)
+                let average = DownloadThroughput.megabytesPerSecond(bytes: totalBytesWritten, seconds: elapsed)
+                var line = "\(dl.filename): \(DownloadThroughput.describeBytes(totalBytesWritten))"
+                if let expected = DownloadThroughput.percent(written: totalBytesWritten, expected: totalBytesExpectedToWrite) {
+                    line += String(format: " / %@ (%.1f%%)", DownloadThroughput.describeBytes(totalBytesExpectedToWrite), expected)
+                }
+                line += " — \(DownloadThroughput.describeRate(current)) now, \(DownloadThroughput.describeRate(average)) avg"
+                if let remaining = DownloadThroughput.secondsRemaining(written: totalBytesWritten, expected: totalBytesExpectedToWrite, elapsed: elapsed) {
+                    line += String(format: ", ~%.0fs left", remaining)
+                }
+                rateMessage = line
+                dl.lastRateLogAt = now
+                dl.bytesAtLastRateLog = totalBytesWritten
+            }
+
             activeDownloads[partId] = dl
         }
+        let concurrent = activeDownloads.count
         downloadQueueLock.unlock()
+
+        if let firstByteMessage = firstByteMessage { AbsLogger.info(message: firstByteMessage) }
+        if let rateMessage = rateMessage { AbsLogger.info(message: "\(rateMessage) [\(concurrent) transfers active]") }
 
         // This task is moving real data, so the connection recovered. Hand the part a fresh retry
         // budget — otherwise a few unrelated blips spread across a multi-hour download add up and kill
@@ -968,6 +1016,11 @@ struct ActiveDownload {
     var graceUntil: Date?
     /// Whether this task has transferred enough to have earned the part a fresh retry budget.
     var clearedRetryState: Bool
+    // Throughput instrumentation
+    let startedAt: Date
+    var firstByteAt: Date?
+    var lastRateLogAt: Date?
+    var bytesAtLastRateLog: Int64 = 0
 }
 
 enum LibraryItemDownloadError: String, Error {
