@@ -353,6 +353,16 @@ Append to `CaptionTimelineTests.swift` (inside the existing class):
     func testNextRequestReturnsNilPastEndOfBook() {
         XCTAssertNil(CaptionTimeline.nextRequest(playhead: 400, segments: [], tracks: tracks, windowAhead: 600))
     }
+
+    // A negative playhead must clamp to the first track, not over-read it.
+    func testNextRequestClampsNegativePlayhead() {
+        let r = CaptionTimeline.nextRequest(playhead: -50, segments: [], tracks: tracks, windowAhead: 600)
+        XCTAssertEqual(r?.localFileId, "f0")
+        XCTAssertEqual(r?.offsetInTrack ?? -1, 0, accuracy: 0.001)
+        XCTAssertEqual(r?.bookOffset ?? -1, 0, accuracy: 0.001)
+        // Must not exceed the 100s track even though the window is 600s.
+        XCTAssertEqual(r?.duration ?? -1, 100, accuracy: 0.001)
+    }
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -406,13 +416,22 @@ Append inside `enum CaptionTimeline` in `ios/App/Shared/util/captions/CaptionTim
                             segments: [CaptionSegment],
                             tracks: [CaptionTrack],
                             windowAhead: Double) -> TranscriptionRequest? {
-        let frontier = coveredUntil(from: playhead, segments: segments)
-        let target = playhead + windowAhead
+        guard !tracks.isEmpty else { return nil }
+        // Clamp to the earliest track start so a negative/pre-start playhead
+        // can't produce a negative frontier (which would over-read the track,
+        // emit negative book times, and re-request the same region forever).
+        let firstStart = tracks.map(\.startOffset).min() ?? 0
+        let clampedPlayhead = max(playhead, firstStart)
+
+        let frontier = coveredUntil(from: clampedPlayhead, segments: segments)
+        let target = clampedPlayhead + windowAhead
         guard frontier < target else { return nil }
         guard let placement = placement(forBookTime: frontier, tracks: tracks) else { return nil }
 
-        // Clip to the end of this track's file — one request never spans two files.
-        let remainingInTrack = placement.track.endOffset - frontier
+        // Remaining audio in THIS track's file, from the placement's own offset —
+        // one request never spans two files. Equal to endOffset - frontier when
+        // unclamped, but correct even when the playhead was clamped.
+        let remainingInTrack = placement.track.duration - placement.offsetInTrack
         let duration = min(target - frontier, remainingInTrack)
         guard duration > 0 else { return nil }
 
