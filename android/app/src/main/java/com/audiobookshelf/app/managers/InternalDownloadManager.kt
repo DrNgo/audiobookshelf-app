@@ -50,9 +50,9 @@ class InternalDownloadManager(
             object : Callback {
               override fun onFailure(call: Call, e: IOException) {
                 if (call.isCanceled()) {
-                  Log.d(tag, "Download URL $url canceled")
+                  Log.d(tag, "Download URL ${redactUrl(url)} canceled")
                 } else {
-                  Log.e(tag, "Download URL $url FAILED", e)
+                  Log.e(tag, "Download URL ${redactUrl(url)} FAILED", e)
                 }
                 finishWith(failed = true)
               }
@@ -60,7 +60,7 @@ class InternalDownloadManager(
               override fun onResponse(call: Call, response: Response) {
                 response.use { resp ->
                   if (!resp.isSuccessful) {
-                    Log.e(tag, "Download URL $url returned HTTP ${resp.code}")
+                    Log.e(tag, "Download URL ${redactUrl(url)} returned HTTP ${resp.code}")
                     finishWith(failed = true)
                     return
                   }
@@ -80,7 +80,7 @@ class InternalDownloadManager(
                   } catch (e: Exception) {
                     // A mid-stream read/write failure (disk full, connection reset) used to throw
                     // here and be swallowed by OkHttp, leaving the part wedged. Always resolve it.
-                    Log.e(tag, "Download URL $url failed while writing", e)
+                    Log.e(tag, "Download URL ${redactUrl(url)} failed while writing", e)
                     finishWith(failed = true)
                   }
                 }
@@ -98,12 +98,17 @@ class InternalDownloadManager(
   private fun finishWith(failed: Boolean) {
     if (finished) return
     finished = true
+    var didFail = failed
     try {
       close()
     } catch (e: Exception) {
-      Log.e(tag, "Error closing writer", e)
+      // close() is what flushes the final buffered bytes to disk, so failing here means the file is
+      // incomplete however well the transfer itself went. Reporting success would hand the scanner a
+      // truncated track.
+      Log.e(tag, "Error closing writer — treating the download as failed", e)
+      didFail = true
     }
-    progressCallback.onComplete(failed)
+    progressCallback.onComplete(didFail)
   }
 
   /**

@@ -57,6 +57,7 @@ class DownloadItemManager(
   // the (main-thread) enqueue path — they were previously plain lists mutated from two threads.
   private val queueLock = Any()
   private val retryCounts = mutableMapOf<String, Int>()
+  private val retryNotBefore = mutableMapOf<String, Long>() // partId -> earliest retry time (ms)
   private val internalDownloaders = mutableMapOf<String, InternalDownloadManager>()
   private val progressTracker = mutableMapOf<String, ProgressSnapshot>()
   private val lastEmittedProgress = mutableMapOf<String, Long>()
@@ -144,10 +145,14 @@ class DownloadItemManager(
     val toStart: List<DownloadItemPart> =
             synchronized(queueLock) {
               val selected = mutableListOf<DownloadItemPart>()
+              val now = System.currentTimeMillis()
               for (downloadItem in downloadItemQueue) {
                 val capacity = maxSimultaneousDownloads - (currentDownloadItemParts.size + selected.size)
                 if (capacity <= 0) break
-                val next = downloadItem.getNextDownloadItemParts(capacity)
+                val next =
+                        downloadItem.getNextDownloadItemParts(capacity) { part ->
+                          (retryNotBefore[part.id] ?: 0L) <= now
+                        }
                 // Reserve so a concurrent call can't re-select the same part before it starts
                 next.forEach { it.downloadId = reservedId }
                 selected.addAll(next)
@@ -171,19 +176,24 @@ class DownloadItemManager(
     }
   }
 
-  /** Starts an internal download (streams straight to the final destination path). */
+  /** Starts an internal download (streams to a .part file, renamed into place only on success). */
   private fun startInternalDownload(downloadItemPart: DownloadItemPart) {
     Log.d(
             tag,
-            "Start internal download to destination path ${downloadItemPart.finalDestinationPath} from ${downloadItemPart.serverUrl}"
+            "Start internal download to destination path ${downloadItemPart.finalDestinationPath} from ${redactUrl(downloadItemPart.serverUrl)}"
     )
     downloadItemPart.downloadId = 1
 
     val downloader: InternalDownloadManager
     try {
-      val file = File(downloadItemPart.finalDestinationPath)
-      file.parentFile?.mkdirs()
-      val fileOutputStream = FileOutputStream(downloadItemPart.finalDestinationPath)
+      val finalFile = File(downloadItemPart.finalDestinationPath)
+      // Stream to a sibling .part file rather than to the final filename. Writing straight to the
+      // destination left a truncated or zero-byte media file sitting at the real name after the last
+      // retry failed — indistinguishable, to the scanner and to the user, from a good download.
+      val partFile = File("${downloadItemPart.finalDestinationPath}.part")
+      finalFile.parentFile?.mkdirs()
+      if (partFile.exists()) partFile.delete()
+      val fileOutputStream = FileOutputStream(partFile)
       val internalProgressCallback =
               object : InternalProgressCallback {
                 override fun onProgress(totalBytesWritten: Long, progress: Long) {
@@ -192,7 +202,18 @@ class DownloadItemManager(
                 }
 
                 override fun onComplete(failed: Boolean) {
-                  downloadItemPart.failed = failed
+                  var didFail = failed
+                  if (!didFail) {
+                    if (finalFile.exists()) finalFile.delete()
+                    if (!partFile.renameTo(finalFile)) {
+                      Log.e(tag, "Failed to move ${partFile.name} into place")
+                      didFail = true
+                    }
+                  }
+                  // Nothing usable is left behind on failure, so a later attempt starts clean and a
+                  // partial file can never be scanned in as a real track.
+                  if (didFail && partFile.exists()) partFile.delete()
+                  downloadItemPart.failed = didFail
                   downloadItemPart.completed = true
                 }
               }
@@ -296,7 +317,10 @@ class DownloadItemManager(
       val downloadItem =
               synchronized(queueLock) { downloadItemQueue.find { it.id == downloadItemPart.downloadItemId } }
       cleanupActivePart(downloadItemPart)
-      synchronized(queueLock) { retryCounts.remove(downloadItemPart.id) }
+      synchronized(queueLock) {
+        retryCounts.remove(downloadItemPart.id)
+        retryNotBefore.remove(downloadItemPart.id)
+      }
       downloadItem?.let { checkDownloadItemFinished(it) }
     } else {
       emitPartUpdate(downloadItemPart)
@@ -403,13 +427,26 @@ class DownloadItemManager(
     }
   }
 
+  /** Exponential backoff between retry attempts, capped at a minute. Mirrors the iOS policy. */
+  private fun retryBackoffMs(attempt: Int): Long {
+    val seconds = minOf(1L shl attempt.coerceIn(1, 6), 60L)
+    return seconds * 1000L
+  }
+
   /** Retries a failed/stalled part with a bounded retry count, or resolves it as permanently failed. */
   private fun handleTerminalFailure(downloadItemPart: DownloadItemPart) {
     val retries = synchronized(queueLock) { retryCounts.getOrDefault(downloadItemPart.id, 0) }
 
     if (retries < maxRetries) {
-      synchronized(queueLock) { retryCounts[downloadItemPart.id] = retries + 1 }
-      Log.w(tag, "Retrying ${downloadItemPart.filename} — attempt ${retries + 1}/$maxRetries")
+      // Back off before the part becomes selectable again. The queue ticks every 500ms, so an
+      // immediate reset meant a part that fails fast (no connectivity on a sleeping device) burned
+      // every attempt within a couple of seconds, long before the user could do anything about it.
+      val delayMs = retryBackoffMs(retries + 1)
+      synchronized(queueLock) {
+        retryCounts[downloadItemPart.id] = retries + 1
+        retryNotBefore[downloadItemPart.id] = System.currentTimeMillis() + delayMs
+      }
+      Log.w(tag, "Retrying ${downloadItemPart.filename} — attempt ${retries + 1}/$maxRetries in ${delayMs / 1000}s")
       cleanupActivePart(downloadItemPart)
       // Reset so getNextDownloadItemParts re-selects it on the next queue tick
       downloadItemPart.completed = false
@@ -426,7 +463,10 @@ class DownloadItemManager(
               synchronized(queueLock) { downloadItemQueue.find { it.id == downloadItemPart.downloadItemId } }
       emitPartUpdate(downloadItemPart) // surface the failure to the UI before we drop the part
       cleanupActivePart(downloadItemPart)
-      synchronized(queueLock) { retryCounts.remove(downloadItemPart.id) }
+      synchronized(queueLock) {
+        retryCounts.remove(downloadItemPart.id)
+        retryNotBefore.remove(downloadItemPart.id)
+      }
       downloadItem?.let { checkDownloadItemFinished(it) }
     }
   }
@@ -473,7 +513,10 @@ class DownloadItemManager(
                 downloadItemPart.isMoving = false
                 file?.delete()
                 cleanupActivePart(downloadItemPart)
-                synchronized(queueLock) { retryCounts.remove(downloadItemPart.id) }
+                synchronized(queueLock) {
+                  retryCounts.remove(downloadItemPart.id)
+                  retryNotBefore.remove(downloadItemPart.id)
+                }
                 checkDownloadItemFinished(downloadItem)
               }
 
@@ -495,7 +538,10 @@ class DownloadItemManager(
                 downloadItemPart.moved = true
                 downloadItemPart.isMoving = false
                 cleanupActivePart(downloadItemPart)
-                synchronized(queueLock) { retryCounts.remove(downloadItemPart.id) }
+                synchronized(queueLock) {
+                  retryCounts.remove(downloadItemPart.id)
+                  retryNotBefore.remove(downloadItemPart.id)
+                }
                 checkDownloadItemFinished(downloadItem)
               }
             }
@@ -507,7 +553,10 @@ class DownloadItemManager(
       downloadItemPart.failed = true
       Log.e(tag, "Local Folder File from uri is null")
       cleanupActivePart(downloadItemPart)
-      synchronized(queueLock) { retryCounts.remove(downloadItemPart.id) }
+      synchronized(queueLock) {
+        retryCounts.remove(downloadItemPart.id)
+        retryNotBefore.remove(downloadItemPart.id)
+      }
       checkDownloadItemFinished(downloadItem)
     } else {
       downloadItemPart.isMoving = true
@@ -526,6 +575,26 @@ class DownloadItemManager(
   private fun checkDownloadItemFinished(downloadItem: DownloadItem) {
     if (downloadItem.isDownloadFinished) {
       Log.i(tag, "Download Item finished ${downloadItem.media.metadata.title}")
+
+      if (!downloadItem.didDownloadSuccessfully) {
+        // At least one part failed permanently. Scanning now would index whatever did arrive and
+        // report the book as downloaded, so the user sees a complete-looking item with missing or
+        // silent tracks. Resolve it in the UI instead and leave the library alone.
+        Log.e(
+                tag,
+                "Download Item ${downloadItem.media.metadata.title} had failed parts — not scanning it into the library"
+        )
+        val jsobj = JSObject().apply {
+          put("libraryItemId", downloadItem.id)
+          put("localFolderId", downloadItem.localFolder.id)
+        }
+        GlobalScope.launch(Dispatchers.Main) {
+          clientEventEmitter.onDownloadItemComplete(jsobj)
+          synchronized(queueLock) { downloadItemQueue.remove(downloadItem) }
+          DeviceManager.dbManager.removeDownloadItem(downloadItem.id)
+        }
+        return
+      }
 
       GlobalScope.launch(Dispatchers.IO) {
         folderScanner.scanDownloadItem(downloadItem) { downloadItemScanResult ->
