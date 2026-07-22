@@ -19,7 +19,21 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     
     static private let downloadsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     
-    private lazy var session: URLSession = {
+    // Serial delegate queue, SHARED by both sessions: guarantees a task's didFinishDownloadingTo (which
+    // commits `completed = true`) fully finishes before its didCompleteWithError runs. With a concurrent
+    // queue these could overlap on different threads, so the completion check could read the part's own
+    // `completed` as still false and — with no polling fallback — wedge the item at "Download complete.
+    // Processing...". Sharing one queue extends that guarantee across a session migration too.
+    private lazy var delegateQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+        return queue
+    }()
+
+    /// Survives app suspension, but iOS throttles it hard: measured at ~0.6 MB/s AGGREGATE regardless of
+    /// how many transfers run (3 got ~0.20 MB/s each, 6 got ~0.10 MB/s each) on a connection serving
+    /// 30-40 MB/s to a desktop browser. Used only while the app is not in the foreground.
+    private lazy var backgroundSession: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: "AbsDownloader")
         // Hardening: bound task lifetime and wait for connectivity instead of failing on a
         // transient blip. A background session's DEFAULT resource timeout is 7 DAYS, which is
@@ -29,16 +43,28 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         config.waitsForConnectivity = true
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
-        let queue = OperationQueue()
-        // Serial delegate queue: guarantees a task's didFinishDownloadingTo (which commits
-        // `completed = true`) fully finishes before its didCompleteWithError runs. With a concurrent
-        // queue these could overlap on different threads, so the completion check could read the
-        // part's own `completed` as still false and — with no polling fallback — wedge the item at
-        // "Download complete. Processing...". Callbacks are lightweight; the only heavier step is a
-        // same-volume file move, so serializing costs nothing meaningful.
-        queue.maxConcurrentOperationCount = 1
-        return URLSession(configuration: config, delegate: self, delegateQueue: queue)
+        return URLSession(configuration: config, delegate: self, delegateQueue: delegateQueue)
     }()
+
+    /// In-process and unthrottled — measured at 21.6 MB/s on the same device, network and moment the
+    /// background session was managing 0.6 MB/s. iOS suspends it when the app leaves the foreground,
+    /// so transfers are migrated to the background session on the way out and back again on return.
+    private lazy var foregroundSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForResource = 12 * 60 * 60
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config, delegate: self, delegateQueue: delegateQueue)
+    }()
+
+    /// Whether the app is in the foreground. Only ever written on the main queue.
+    private var isAppInForeground = true
+    private var lastMigrationAt: Date?
+    /// Rapid app switching must not turn into a cancel/reissue storm.
+    private let migrationCooldown: TimeInterval = 5
+    private var migratingPartIds: Set<String> = [] // guarded by downloadQueueLock
+
+    private var preferredSession: URLSession { isAppInForeground ? foregroundSession : backgroundSession }
 
     // Stall detection + retry tuning
     private let stallTimeout: TimeInterval = 30     // no bytes for this long => treat as stalled
@@ -105,7 +131,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 continue
             }
 
-            activeDownloads[next.partId] = ActiveDownload(partId: next.partId, filename: next.filename, downloadURL: next.downloadURL, task: next.task, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: nil, clearedRetryState: false, startedAt: Date())
+            activeDownloads[next.partId] = ActiveDownload(partId: next.partId, filename: next.filename, downloadURL: next.downloadURL, task: next.task, usesForegroundSession: next.usesForegroundSession, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: nil, clearedRetryState: false, startedAt: Date())
             AbsLogger.info(message: "Starting download for \(next.filename) → \(DownloadURLBuilder.redacted(next.task.originalRequest?.url ?? next.downloadURL)) (\(activeDownloads.count)/\(maxConcurrentDownloads) active, \(pendingDownloadTasks.count) pending)")
             next.task.resume()
         }
@@ -116,6 +142,122 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         for task in duplicates { task.cancel() }
 
         if hasActive { startStallWatchdogIfNeeded() }
+    }
+
+    // MARK: - Session migration
+
+    /// Downloads run on whichever session is fast enough and legal for the current app state: the
+    /// in-process default session while the app is in front (unthrottled), the background session once
+    /// it isn't (throttled, but the only kind that survives suspension).
+    ///
+    /// Moving a transfer means cancelling it for resume data and reissuing it on the other session,
+    /// which only preserves progress because the server answers Range requests with 206 — verified
+    /// before this was built. Without that, every migration would restart the file from zero.
+    private func observeAppStateForSessionMigration() {
+        DispatchQueue.runOnMainQueue {
+            self.isAppInForeground = UIApplication.shared.applicationState != .background
+            NotificationCenter.default.addObserver(self, selector: #selector(self.handleAppBackgrounded),
+                                                   name: UIApplication.didEnterBackgroundNotification, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(self.handleAppForegrounded),
+                                                   name: UIApplication.willEnterForegroundNotification, object: nil)
+        }
+    }
+
+    @objc private func handleAppBackgrounded() {
+        isAppInForeground = false
+        // Buy time for the cancel/reissue round trip; without it iOS can suspend us mid-migration and
+        // the transfer only resumes at the next launch via reconcile.
+        var assertion: UIBackgroundTaskIdentifier = .invalid
+        assertion = UIApplication.shared.beginBackgroundTask(withName: "download-session-migration") {
+            if assertion != .invalid { UIApplication.shared.endBackgroundTask(assertion) }
+            assertion = .invalid
+        }
+        migrateActiveDownloads(reason: "app backgrounded")
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 15) {
+            if assertion != .invalid { UIApplication.shared.endBackgroundTask(assertion) }
+            assertion = .invalid
+        }
+    }
+
+    @objc private func handleAppForegrounded() {
+        isAppInForeground = true
+        migrateActiveDownloads(reason: "app foregrounded")
+    }
+
+    private func migrateActiveDownloads(reason: String) {
+        let wantForeground = isAppInForeground
+        let now = Date()
+
+        downloadQueueLock.lock()
+        // Rapid app switching must not become a cancel/reissue storm — each migration costs a round trip
+        // and, when resume data is refused, real progress.
+        if let last = lastMigrationAt, now.timeIntervalSince(last) < migrationCooldown {
+            downloadQueueLock.unlock()
+            return
+        }
+
+        let mismatched = activeDownloads.values.filter { $0.usesForegroundSession != wantForeground }
+
+        // Queued-but-unstarted tasks were built against the other session. They carry no progress, so
+        // just rebuild them rather than migrating.
+        var rebuiltPending: [PendingDownload] = []
+        var staleTasks: [URLSessionDownloadTask] = []
+        pendingDownloadTasks = pendingDownloadTasks.map { pending in
+            guard pending.usesForegroundSession != wantForeground else { return pending }
+            discardedTaskIds.insert(pending.task.taskIdentifier)
+            staleTasks.append(pending.task)
+            let session = wantForeground ? foregroundSession : backgroundSession
+            let task = session.downloadTask(with: pending.downloadURL)
+            task.taskDescription = pending.partId
+            let replacement = PendingDownload(partId: pending.partId, filename: pending.filename,
+                                              downloadURL: pending.downloadURL, task: task,
+                                              usesForegroundSession: wantForeground)
+            rebuiltPending.append(replacement)
+            return replacement
+        }
+
+        guard !mismatched.isEmpty || !rebuiltPending.isEmpty else {
+            downloadQueueLock.unlock()
+            return
+        }
+        for dl in mismatched { migratingPartIds.insert(dl.partId) }
+        lastMigrationAt = now
+        downloadQueueLock.unlock()
+
+        AbsLogger.info(message: "Migrating \(mismatched.count) transfer(s) (+\(rebuiltPending.count) queued) to the \(wantForeground ? "foreground" : "background") session — \(reason)")
+
+        for task in staleTasks { task.cancel() }
+        // Cancelling for resume data lands in didCompleteWithError, which reissues on the new session.
+        for dl in mismatched { dl.task.cancel(byProducingResumeData: { _ in }) }
+    }
+
+    /// Reissue a transfer that was cancelled purely to move it between sessions. Deliberately does NOT
+    /// consume a retry attempt or touch failure state — nothing went wrong.
+    private func reissueMigratedDownload(partId: String, filename: String, previousURL: URL?, resumeData: Data?) {
+        let useForeground = isAppInForeground
+        let session = useForeground ? foregroundSession : backgroundSession
+        let part = Database.shared.getDownloadItem(downloadItemPartId: partId)?
+            .downloadItemParts.first(where: { $0.id == partId })
+        let url = part.flatMap { self.downloadURL(for: $0) } ?? previousURL
+
+        let task: URLSessionDownloadTask?
+        if let resumeData = resumeData, DownloadURLBuilder.sameEndpoint(previousURL, url) {
+            task = session.downloadTask(withResumeData: resumeData)
+        } else if let url = url {
+            task = session.downloadTask(with: url)
+        } else {
+            task = nil
+        }
+
+        guard let task = task, let resolvedURL = url ?? task.originalRequest?.url else {
+            AbsLogger.error(message: "Could not migrate \(filename); leaving it for reconcile on next launch")
+            return
+        }
+        task.taskDescription = partId
+        AbsLogger.info(message: "Migrated \(filename) to the \(useForeground ? "foreground" : "background") session (resume=\(resumeData != nil))")
+        enqueuePendingDownload(PendingDownload(partId: partId, filename: filename, downloadURL: resolvedURL,
+                                               task: task, usesForegroundSession: useForeground))
+        startNextDownloadInQueue()
     }
 
     /// One-shot diagnostic: fetch a few MB of a real track over a DEFAULT (in-process) URLSession and
@@ -205,7 +347,9 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
     // Reconnect to background downloads left over from a previous app launch so a relaunch can't
     // orphan an in-flight task (a background URLSession's tasks persist across process restarts).
     public override func load() {
-        session.getAllTasks { tasks in
+        observeAppStateForSessionMigration()
+        // Only the background session persists tasks across launches.
+        backgroundSession.getAllTasks { tasks in
             var adoptedPartIds = Set<String>()
             self.downloadQueueLock.lock()
             var adopted = 0
@@ -220,7 +364,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                         // Grace period: an adopted background task can take a while to start delivering
                         // progress callbacks again. Without it the watchdog cancelled these ~30s after
                         // every single launch, burning retries on downloads that were perfectly fine.
-                        self.activeDownloads[partId] = ActiveDownload(partId: partId, filename: partId, downloadURL: url, task: dl, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: Date().addingTimeInterval(self.stallGracePeriod), clearedRetryState: false, startedAt: Date())
+                        self.activeDownloads[partId] = ActiveDownload(partId: partId, filename: partId, downloadURL: url, task: dl, usesForegroundSession: false, lastBytesWritten: 0, lastProgressAt: Date(), graceUntil: Date().addingTimeInterval(self.stallGracePeriod), clearedRetryState: false, startedAt: Date())
                         if dl.state == .suspended { dl.resume() }
                         adopted += 1
                         adoptedPartIds.insert(partId)
@@ -244,6 +388,13 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
             // finished on disk. Runs on the session's (serial) delegate queue, so it can't race the
             // download callbacks.
             self.reconcilePersistedDownloads(adoptedPartIds: adoptedPartIds)
+
+            // Tasks adopted here belong to the background session, and launching straight into the
+            // foreground fires no transition notification — so without this, a resumed download would
+            // stay on the throttled session until the user happened to switch apps.
+            if self.isAppInForeground {
+                self.migrateActiveDownloads(reason: "launched in the foreground")
+            }
         }
     }
 
@@ -274,14 +425,14 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 // partial transfer away.
                 let task: URLSessionDownloadTask
                 if let resumeData = self.stateStore.resumeData(forPartId: part.id) {
-                    task = self.session.downloadTask(withResumeData: resumeData)
+                    task = self.preferredSession.downloadTask(withResumeData: resumeData)
                     try? realm.write {
                         part.failed = false
                         part.completed = false
                     }
                     AbsLogger.info(message: "Resuming \(part.filename ?? part.id) from saved resume data")
                 } else {
-                    task = self.session.downloadTask(with: url)
+                    task = self.preferredSession.downloadTask(with: url)
                     try? realm.write {
                         part.progress = 0
                         part.bytesDownloaded = 0
@@ -290,7 +441,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                     }
                 }
                 task.taskDescription = part.id
-                itemRestarts.append(PendingDownload(partId: part.id, filename: part.filename ?? part.id, downloadURL: url, task: task))
+                itemRestarts.append(PendingDownload(partId: part.id, filename: part.filename ?? part.id, downloadURL: url, task: task, usesForegroundSession: self.isAppInForeground))
             }
 
             // Everything already on disk but never finalized (app died mid-finalization). If a local
@@ -388,7 +539,19 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         }
         let active = activeDownloads.removeValue(forKey: partId)
         let intentionalStallCancel = stalledPartIds.remove(partId) != nil
+        let isMigrating = migratingPartIds.remove(partId) != nil
         downloadQueueLock.unlock()
+
+        // Moved between sessions on purpose. Not a failure: no attempt consumed, no failure state.
+        // (If error is nil the transfer actually finished first — fall through and finalize it.)
+        if isMigrating, let error = error as NSError? {
+            reissueMigratedDownload(partId: partId,
+                                    filename: active?.filename ?? partId,
+                                    previousURL: active?.downloadURL ?? task.originalRequest?.url,
+                                    resumeData: error.userInfo[NSURLSessionDownloadTaskResumeData] as? Data)
+            startNextDownloadInQueue()
+            return
+        }
         progressThrottleLock.lock()
         lastPersistAt.removeValue(forKey: partId)
         progressThrottleLock.unlock()
@@ -422,8 +585,8 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                 }
 
                 let retryTask: URLSessionDownloadTask? = {
-                    if let usableResumeData = usableResumeData { return session.downloadTask(withResumeData: usableResumeData) }
-                    if let url = url { return session.downloadTask(with: url) }
+                    if let usableResumeData = usableResumeData { return preferredSession.downloadTask(withResumeData: usableResumeData) }
+                    if let url = url { return preferredSession.downloadTask(with: url) }
                     return nil
                 }()
                 if let retryTask = retryTask, let resolvedURL = url ?? retryTask.originalRequest?.url {
@@ -432,7 +595,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
                     let attempt = stateStore.recordAttempt(forPartId: partId)
                     let delay = DownloadRetryPolicy.backoffDelay(forAttempt: attempt)
                     AbsLogger.info(message: "Retrying \(filename) — attempt \(attempt)/\(DownloadRetryPolicy.maxAttemptsPerPart) in \(Int(delay))s (resume=\(usableResumeData != nil), stalled=\(intentionalStallCancel))")
-                    let pending = PendingDownload(partId: partId, filename: filename, downloadURL: resolvedURL, task: retryTask)
+                    let pending = PendingDownload(partId: partId, filename: filename, downloadURL: resolvedURL, task: retryTask, usesForegroundSession: isAppInForeground)
                     DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay) { [weak self] in
                         self?.enqueuePendingDownload(pending)
                         self?.startNextDownloadInQueue()
@@ -921,7 +1084,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         if let itemId = downloadItem.id { finalizedItemIds.remove(itemId) }
         for t in tasks {
             let url = t.task.originalRequest?.url ?? t.part.downloadURL!
-            pendingDownloadTasks.append(PendingDownload(partId: t.partId, filename: t.filename, downloadURL: url, task: t.task))
+            pendingDownloadTasks.append(PendingDownload(partId: t.partId, filename: t.filename, downloadURL: url, task: t.task, usesForegroundSession: isAppInForeground))
         }
         downloadQueueLock.unlock()
 
@@ -952,7 +1115,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
 
         let part = DownloadItemPart(downloadItemId: downloadItemId, filename: filename, destination: localUrl, itemTitle: track.title ?? "Unknown", serverPath: serverPath, audioTrack: track, episode: episode, ebookFile: nil, size: track.metadata?.size ?? 0)
         guard let serverUrl = downloadURL(for: part) else { throw LibraryItemDownloadError.noMetadata }
-        let task = session.downloadTask(with: serverUrl)
+        let task = preferredSession.downloadTask(with: serverUrl)
 
         // Store the id on the task so the download item can be pulled from the database later
         task.taskDescription = part.id
@@ -967,7 +1130,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         let localUrl = "\(itemDirectory)/\(filename)"
 
         let part = DownloadItemPart(downloadItemId: downloadItemId, filename: filename, destination: localUrl, itemTitle: filename, serverPath: serverPath, audioTrack: nil, episode: nil, ebookFile: ebookFile, size: ebookFile.metadata?.size ?? 0)
-        let task = session.downloadTask(with: part.downloadURL!)
+        let task = preferredSession.downloadTask(with: part.downloadURL!)
 
         // Store the id on the task so the download item can be pulled from the database later
         task.taskDescription = part.id
@@ -987,7 +1150,7 @@ public class AbsDownloader: CAPPlugin, CAPBridgedPlugin, URLSessionDownloadDeleg
         })
 
         let part = DownloadItemPart(downloadItemId: downloadItemId, filename: filename, destination: localUrl, itemTitle: "cover", serverPath: serverPath, audioTrack: nil, episode: nil, ebookFile: nil, size: coverLibraryFile?.metadata?.size ?? 0)
-        let task = session.downloadTask(with: part.downloadURL!)
+        let task = preferredSession.downloadTask(with: part.downloadURL!)
 
         // Store the id on the task so the download item can be pulled from the database later
         task.taskDescription = part.id
@@ -1078,6 +1241,8 @@ struct PendingDownload {
     let filename: String
     let downloadURL: URL
     let task: URLSessionDownloadTask
+    /// Which session this task was created against, so a migration knows what needs moving.
+    let usesForegroundSession: Bool
 }
 
 // In-flight download plus the bookkeeping the stall watchdog needs.
@@ -1086,6 +1251,7 @@ struct ActiveDownload {
     let filename: String
     let downloadURL: URL
     let task: URLSessionDownloadTask
+    let usesForegroundSession: Bool
     var lastBytesWritten: Int64
     var lastProgressAt: Date
     /// Exempt from stall detection until this time — set for tasks adopted from a previous launch and
