@@ -92,4 +92,37 @@ final class CaptionContextBuilderTests: XCTestCase {
     func testEverythingEmptyReturnsEmpty() {
         XCTAssertEqual(CaptionContextBuilder.build(fields: [], bookBlurb: "", seriesBlurbs: []), [])
     }
+
+    // The Title-Case heuristic catches invented names NER skips.
+    func testHeuristicCatchesInventedNames() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "In the city of Luthadel, Vin joined a crew led by Kelsier.",
+            seriesBlurbs: []
+        )
+        XCTAssertTrue(terms.contains("Luthadel"), "expected invented place Luthadel; got \(terms)")
+        XCTAssertTrue(terms.contains("Kelsier"), "expected invented name Kelsier; got \(terms)")
+    }
+
+    // Sentence-initial single common words are not treated as names.
+    func testHeuristicDropsSentenceInitialCommonWords() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "The wind blew. In darkness they waited.",
+            seriesBlurbs: []
+        )
+        XCTAssertFalse(terms.contains("The"), "got \(terms)")
+        XCTAssertFalse(terms.contains("In"), "got \(terms)")
+    }
+
+    // A leading article is stripped from a multi-word Title-Case phrase.
+    func testHeuristicStripsLeadingArticle() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "They feared The Final Empire.",
+            seriesBlurbs: []
+        )
+        XCTAssertTrue(terms.contains("Final Empire"), "got \(terms)")
+        XCTAssertFalse(terms.contains("The Final Empire"), "got \(terms)")
+    }
 }

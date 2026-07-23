@@ -39,8 +39,17 @@ enum CaptionContextBuilder {
         return result
     }
 
-    /// Person / place / organization names in `text`, in order of appearance.
+    /// Names in `text`: NER (real names/places/orgs) unioned with Title-Case
+    /// proper nouns (invented names NER misses). De-dup happens in `build`.
     private static func names(in text: String) -> [String] {
+        guard !text.isEmpty else { return [] }
+        var found = nerNames(in: text)
+        found.append(contentsOf: capitalizedPhrases(in: text))
+        return found
+    }
+
+    /// Person / place / organization names in `text`, in order of appearance.
+    private static func nerNames(in text: String) -> [String] {
         guard !text.isEmpty else { return [] }
         let tagger = NLTagger(tagSchemes: [.nameType])
         tagger.string = text
@@ -57,5 +66,55 @@ enum CaptionContextBuilder {
             return true
         }
         return found
+    }
+
+    /// Single Title-Case words that are almost always sentence capitalization or
+    /// function words rather than names — dropped when a phrase is just one of them.
+    private static let commonWords: Set<String> = [
+        "the","a","an","and","or","but","if","of","to","in","on","at","by","for","with",
+        "he","she","it","they","we","i","you","his","her","their","our","its",
+        "this","that","these","those","then","when","while","after","before","as","from",
+        "one","two","three","first","new","old","now","here","there",
+        "chapter","book","novel","story","series","tale","saga","volume","part"
+    ]
+
+    /// Title-Case proper-noun phrases in `text` — catches the invented names NER
+    /// misses (fantasy/sci-fi blurbs capitalize them). Consecutive capitalized
+    /// tokens form one phrase; a leading article is stripped; a single-word phrase
+    /// that is a common/function word is dropped.
+    private static func capitalizedPhrases(in text: String) -> [String] {
+        var phrases: [String] = []
+        var current: [String] = []
+        let punctuation = CharacterSet(charactersIn: ".,;:!?\"'()[]{}—–-…")
+
+        func flush() {
+            guard !current.isEmpty else { return }
+            var words = current
+            current = []
+            if words.count > 1, ["the","a","an"].contains(words[0].lowercased()) {
+                words.removeFirst()
+            }
+            guard !words.isEmpty else { return }
+            if words.count == 1, commonWords.contains(words[0].lowercased()) { return }
+            let phrase = words.joined(separator: " ")
+            if !phrases.contains(phrase) { phrases.append(phrase) }
+        }
+
+        for raw in text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }) {
+            let token = String(raw).trimmingCharacters(in: punctuation)
+            let firstScalar = token.unicodeScalars.first
+            let isCapitalized = token.count > 1 && firstScalar.map { CharacterSet.uppercaseLetters.contains($0) } == true
+            if isCapitalized {
+                current.append(token)
+            } else {
+                flush()
+            }
+            if raw.hasSuffix(".") || raw.hasSuffix("!") || raw.hasSuffix("?") ||
+               raw.hasSuffix(",") || raw.hasSuffix(";") || raw.hasSuffix(":") {
+                flush()
+            }
+        }
+        flush()
+        return phrases
     }
 }
