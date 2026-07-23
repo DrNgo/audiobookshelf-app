@@ -12,6 +12,9 @@ class AbsTranscriberWeb extends WebPlugin {
   async enable() {}
   async updateTime() {}
   async disable() {}
+  async buildContext() {
+    return { termCount: 0 }
+  }
 }
 
 const AbsTranscriber = registerPlugin('AbsTranscriber', {
