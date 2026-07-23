@@ -5,6 +5,7 @@
 
 import XCTest
 import AVFoundation
+import Speech
 @testable import Audiobookshelf
 
 @available(iOS 26.0, *)
@@ -17,17 +18,32 @@ final class SpeechTranscriptionEngineTests: XCTestCase {
         return url
     }
 
+    /// True only when the en-US model is actually INSTALLED (runnable) on this
+    /// machine. `isAvailable` now reports installable-but-maybe-not-yet-downloaded
+    /// support (via `supportedLocale(equivalentTo:)`), which is true even in the
+    /// simulator where the model can't actually run — so the end-to-end test gates
+    /// on real installation and skips in-sim as before, while still running on a
+    /// device that has (or just installed) the model.
+    private static func modelInstalled(_ locale: Locale) async -> Bool {
+        let installed = await SpeechTranscriber.installedLocales
+        return installed.contains { $0.identifier(.bcp47) == locale.identifier(.bcp47) }
+    }
+
     func testLocaleAvailability() async throws {
         // `await` can't live inside XCTSkipUnless's non-async autoclosure, so the
         // async availability check is resolved first, then handed over as a Bool.
+        // isAvailable now means "supported/installable" (equivalence-resolved), so
+        // this asserts the language resolves rather than that a model is present.
         let available = await SpeechTranscriptionEngine.isAvailable(locale: Locale(identifier: "en-US"))
-        try XCTSkipUnless(available, "en-US speech model unavailable on this machine")
+        try XCTSkipUnless(available, "en-US speech locale not supported on this machine")
     }
 
     func testProducesTimedSegmentsShiftedIntoBookTime() async throws {
         let locale = Locale(identifier: "en-US")
-        let available = await SpeechTranscriptionEngine.isAvailable(locale: locale)
-        try XCTSkipUnless(available, "en-US speech model unavailable on this machine")
+        // Try to make the model present; in the simulator this can't succeed.
+        _ = try? await SpeechTranscriptionEngine.prepareModel(locale: locale)
+        let installed = await Self.modelInstalled(locale)
+        try XCTSkipUnless(installed, "en-US speech model not installed on this machine")
         try await SpeechTranscriptionEngine.prepareModel(locale: locale)
 
         let engine = SpeechTranscriptionEngine(locale: locale)

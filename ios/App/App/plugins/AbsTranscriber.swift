@@ -24,8 +24,16 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "disable", returnType: CAPPluginReturnPromise)
     ]
 
-    private var scheduler: CaptionScheduler?
-    private var lastReportedTime: Double = 0
+    // Isolated to the main actor: these three are read/written from Task closures
+    // that run off the caller's thread, so all access is hopped onto @MainActor to
+    // serialize the session-token check against the scheduler assignment. Capacitor
+    // already invokes the @objc methods on the main thread.
+    @MainActor private var scheduler: CaptionScheduler?
+    @MainActor private var lastReportedTime: Double = 0
+    // Session generation. Bumped by every enable()/disable(); an in-flight enable
+    // Task captures the value at start and bails at each checkpoint if it no longer
+    // matches, so a superseded enable can never resurrect or overwrite a scheduler.
+    @MainActor private var enableGeneration = 0
 
     // MARK: - Background handling
 
@@ -39,11 +47,11 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc private func appDidEnterBackground() {
-        Task { await self.scheduler?.suspend() }
+        Task { @MainActor in await self.scheduler?.suspend() }
     }
 
     @objc private func appWillEnterForeground() {
-        Task { await self.scheduler?.resume() }
+        Task { @MainActor in await self.scheduler?.resume() }
     }
 
     // MARK: - Capability
@@ -59,7 +67,10 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
                 call.resolve(["supported": false, "reason": "permission"])
                 return
             }
-            let available = await SpeechTranscriptionEngine.isAvailable(locale: Locale.current)
+            // Resolve to the supported EQUIVALENT (en-CA → en-US, etc.); nil means
+            // the language genuinely isn't supported.
+            let resolved = await SpeechTranscriptionEngine.supportedEquivalent(of: Locale.current)
+            let available = resolved != nil
             call.resolve(["supported": available, "reason": available ? "ok" : "locale"])
         }
     }
@@ -76,53 +87,93 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let currentTime = call.getDouble("currentTime") ?? 0
-        lastReportedTime = currentTime
 
-        Task {
+        Task { @MainActor in
+            // Session token: supersede any earlier in-flight enable (still awaiting
+            // model download etc.) so it bails at its next checkpoint instead of
+            // resurrecting a stale scheduler. All shared-state access below runs on
+            // the main actor, so the token check and the scheduler assignment are
+            // serialized against a racing disable()/enable().
+            self.enableGeneration += 1
+            let gen = self.enableGeneration
+            self.lastReportedTime = currentTime
+
             // Idempotent: tear down any scheduler from a prior enable before starting
             // a new one, so a rapid re-enable / book-change can't leak a running
             // scheduler or double-run the engine.
             await self.scheduler?.stop()
             self.scheduler = nil
+            guard gen == self.enableGeneration else { return }
+
+            // Resolve the device locale to its supported EQUIVALENT once, and thread
+            // THAT through model install + engine + store so the installed model
+            // matches the one used (en-CA → en-US, etc.).
+            guard let resolved = await SpeechTranscriptionEngine.supportedEquivalent(of: Locale.current) else {
+                guard gen == self.enableGeneration else { return }
+                self.notifyStatus("error", "This language is not supported")
+                call.reject("This language is not supported")
+                return
+            }
+            guard gen == self.enableGeneration else { return }
 
             do {
                 try await self.requestAuthorization()
             } catch {
+                guard gen == self.enableGeneration else { return }
                 self.notifyStatus("error", "Speech recognition permission was denied")
                 call.reject("Speech recognition permission was denied")
                 return
             }
+            guard gen == self.enableGeneration else { return }
 
             self.notifyStatus("downloading-model", nil)
             do {
-                try await SpeechTranscriptionEngine.prepareModel(locale: Locale.current)
+                try await SpeechTranscriptionEngine.prepareModel(locale: resolved)
             } catch {
+                guard gen == self.enableGeneration else { return }
                 self.notifyStatus("error", "Could not download language support")
                 call.reject("Could not download language support")
                 return
             }
+            guard gen == self.enableGeneration else { return }
 
             guard let context = self.buildContext(libraryItemId: libraryItemId) else {
+                guard gen == self.enableGeneration else { return }
                 self.notifyStatus("error", "This book is not downloaded")
                 call.reject("This book is not downloaded")
                 return
             }
+            // buildContext does not await; re-check before building/publishing.
+            guard gen == self.enableGeneration else { return }
 
             self.notifyStatus("preparing", nil)
 
-            let engine = SpeechTranscriptionEngine(locale: Locale.current)
+            let engine = SpeechTranscriptionEngine(locale: resolved)
             let scheduler = CaptionScheduler(
                 tracks: context.tracks,
                 fileURLs: context.fileURLs,
                 store: CaptionStore(directory: context.directory),
                 engine: engine,
-                locale: Locale.current.identifier(.bcp47),
+                locale: resolved.identifier(.bcp47),
                 onSegments: { [weak self] segments in
                     self?.notifySegments(segments)
                 }
             )
+            // Superseded while constructing the scheduler? Tear down what we built
+            // rather than publishing/starting it.
+            guard gen == self.enableGeneration else {
+                await scheduler.stop()
+                return
+            }
             self.scheduler = scheduler
             await scheduler.start(at: currentTime)
+            // A disable()/enable() may have landed during start(): if so, stop the
+            // scheduler and only clear the slot if it's still ours.
+            guard gen == self.enableGeneration else {
+                await scheduler.stop()
+                if self.scheduler === scheduler { self.scheduler = nil }
+                return
+            }
             self.notifyStatus("ready", nil)
             call.resolve()
         }
@@ -133,10 +184,10 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
     /// work for the region the listener just left.
     @objc func updateTime(_ call: CAPPluginCall) {
         let currentTime = call.getDouble("currentTime") ?? 0
-        let isSeek = abs(currentTime - lastReportedTime) > 5
-        lastReportedTime = currentTime
 
-        Task {
+        Task { @MainActor in
+            let isSeek = abs(currentTime - self.lastReportedTime) > 5
+            self.lastReportedTime = currentTime
             if isSeek {
                 await self.scheduler?.seek(to: currentTime)
             } else {
@@ -147,7 +198,10 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func disable(_ call: CAPPluginCall) {
-        Task {
+        Task { @MainActor in
+            // Supersede any in-flight enable Task so it can't publish a scheduler
+            // after we've torn down.
+            self.enableGeneration += 1
             await self.scheduler?.stop()
             self.scheduler = nil
             call.resolve()

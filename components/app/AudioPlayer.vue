@@ -36,7 +36,7 @@
 
     <div class="cover-wrapper absolute z-30 pointer-events-auto" @click="clickContainer">
       <div class="w-full h-full flex justify-center">
-        <player-caption-panel v-if="showCaptions" :current-time="currentTime" :is-playing="isPlaying" :playback-rate="currentPlaybackRate" :library-item-id="captionLibraryItemId" :width="bookCoverWidth" />
+        <player-caption-panel v-if="showCaptions" :key="captionLibraryItemId" :current-time="currentTime" :is-playing="isPlaying" :playback-rate="currentPlaybackRate" :library-item-id="captionLibraryItemId" :width="bookCoverWidth" />
         <covers-book-cover v-else-if="coverUrl" ref="cover" :download-cover="coverUrl" :width="bookCoverWidth" :book-cover-aspect-ratio="bookCoverAspectRatio" raw @imageLoaded="coverImageLoaded" />
       </div>
 

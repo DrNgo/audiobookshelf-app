@@ -28,13 +28,20 @@ actor SpeechTranscriptionEngine: SegmentProducing {
         self.locale = locale
     }
 
+    /// Resolve a device locale to the supported locale it's EQUIVALENT to, or nil
+    /// if the language isn't supported at all. Verified against the iOS 26.5 SDK:
+    /// `static func supportedLocale(equivalentTo locale: Locale) async -> Locale?`
+    /// on SpeechTranscriber (via LocaleDependentSpeechModule). This tolerates
+    /// regional variants (e.g. en-CA resolves to en-US) instead of demanding an
+    /// exact BCP-47 match, and the returned locale is the one whose model gets
+    /// installed — so callers thread THIS value through install + engine
+    /// construction to keep the two in lockstep.
+    static func supportedEquivalent(of locale: Locale) async -> Locale? {
+        return await SpeechTranscriber.supportedLocale(equivalentTo: locale)
+    }
+
     static func isAvailable(locale: Locale) async -> Bool {
-        // Verified: `supportedLocales` is `static var … [Locale] { get async }`.
-        // Includes locales that are downloadable-but-not-yet-installed, which is
-        // what we want — prepareModel() installs on demand. (`installedLocales`
-        // exists too, for skipping the download prompt when already present.)
-        let supported = await SpeechTranscriber.supportedLocales
-        return supported.contains { $0.identifier(.bcp47) == locale.identifier(.bcp47) }
+        return await supportedEquivalent(of: locale) != nil
     }
 
     /// Downloads the on-device language model if it isn't installed yet.
@@ -81,6 +88,9 @@ actor SpeechTranscriptionEngine: SegmentProducing {
             throw EngineError.unreadableAudio
         }
 
+        // NOTE: this AsyncStream is unbounded (no backpressure); the analyzer
+        // keeps pace with the reader in practice — device-verified in Task 9 — so
+        // the input side does not grow without bound. Not addressed here.
         let (inputStream, inputContinuation) = AsyncStream<AnalyzerInput>.makeStream()
 
         // Consume results CONCURRENTLY with feeding + finalizing. `transcriber.results`
@@ -238,8 +248,43 @@ actor SpeechTranscriptionEngine: SegmentProducing {
             continuation.yield(AnalyzerInput(buffer: outBuffer))
         }
 
+        // Reader exhausted normally: flush the converter's internal tail.
+        // AVAudioConverter (especially sample-rate conversion) buffers primer/tail
+        // frames until it's told the input has ended, so without this final drain
+        // the last word(s) of each window get clipped at the request boundary.
+        // Only meaningful on the converter path — identical formats feed the
+        // reader buffer directly and buffer nothing. Skipped if we broke out via
+        // cancellation (tearing down, not finalizing this window).
+        if !Task.isCancelled, formatsDiffer, let converter {
+            for tail in Self.drainTail(of: converter, to: analyzerFormat) {
+                continuation.yield(AnalyzerInput(buffer: tail))
+            }
+        }
+
         if reader.status == .failed { throw reader.error ?? EngineError.unreadableAudio }
         reader.cancelReading()
+    }
+
+    /// Drain frames AVAudioConverter buffered internally, by driving it with an
+    /// end-of-stream input block until it reports `.endOfStream` (or errors /
+    /// stops producing). The converter emits buffered frames as `.haveData`
+    /// across one or more calls and finally returns `.endOfStream`, so we loop —
+    /// guaranteeing no tail is lost and that it terminates.
+    private static func drainTail(of converter: AVAudioConverter,
+                                  to outFormat: AVAudioFormat) -> [AVAudioPCMBuffer] {
+        var buffers: [AVAudioPCMBuffer] = []
+        while true {
+            guard let output = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: 4096) else { break }
+            var error: NSError?
+            let status = converter.convert(to: output, error: &error) { _, outStatus in
+                outStatus.pointee = .endOfStream
+                return nil
+            }
+            if error != nil { break }
+            if output.frameLength > 0 { buffers.append(output) }
+            if status == .endOfStream || status == .error || output.frameLength == 0 { break }
+        }
+        return buffers
     }
 
     /// Copy a decoded CMSampleBuffer into an AVAudioPCMBuffer of `format` using
