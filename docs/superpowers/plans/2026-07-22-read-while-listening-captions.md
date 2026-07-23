@@ -1930,6 +1930,14 @@ export { AbsAudioPlayer, AbsDownloader, AbsFileSystem, AbsLogger, AbsDatabase, A
 
 Follow **Procedure A** with `App/plugins/AbsTranscriber.swift` and target `Audiobookshelf`.
 
+- [ ] **Step 5b: Register the plugin instance with the Capacitor bridge**
+
+This app does NOT auto-discover Capacitor plugins — it registers each explicitly in `ios/App/App/MyViewController.swift`'s `capacitorDidLoad()`, alongside the other `Abs*` plugins. Without this the plugin links but is unreachable from JS (`AbsTranscriber` calls silently no-op). Add, matching the sibling registrations:
+
+```swift
+        bridge?.registerPluginInstance(AbsTranscriber())
+```
+
 - [ ] **Step 6: Build to verify it compiles**
 
 ```bash
