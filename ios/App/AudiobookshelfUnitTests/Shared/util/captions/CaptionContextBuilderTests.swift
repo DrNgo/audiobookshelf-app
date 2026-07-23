@@ -125,4 +125,18 @@ final class CaptionContextBuilderTests: XCTestCase {
         XCTAssertTrue(terms.contains("Final Empire"), "got \(terms)")
         XCTAssertFalse(terms.contains("The Final Empire"), "got \(terms)")
     }
+
+    // Possessive suffix stripped; a smart-quoted invented name still extracted cleanly.
+    func testHeuristicHandlesPossessivesAndSmartQuotes() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "Kelsier's crew marched. \u{201C}Luthadel\u{201D} burned.",
+            seriesBlurbs: []
+        )
+        XCTAssertTrue(terms.contains("Kelsier"), terms.description)
+        XCTAssertFalse(terms.contains("Kelsier's"), terms.description)
+        XCTAssertTrue(terms.contains("Luthadel"), terms.description)
+        XCTAssertFalse(terms.contains { $0.contains("\u{201C}") || $0.contains("\u{201D}") },
+                       "no smart quotes should survive in terms: \(terms.description)")
+    }
 }

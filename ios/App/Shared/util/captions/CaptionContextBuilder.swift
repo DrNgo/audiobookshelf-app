@@ -85,7 +85,7 @@ enum CaptionContextBuilder {
     private static func capitalizedPhrases(in text: String) -> [String] {
         var phrases: [String] = []
         var current: [String] = []
-        let punctuation = CharacterSet(charactersIn: ".,;:!?\"'()[]{}—–-…")
+        let punctuation = CharacterSet(charactersIn: ".,;:!?\"'()[]{}—–-…\u{201C}\u{201D}\u{2018}\u{2019}«»")
 
         func flush() {
             guard !current.isEmpty else { return }
@@ -101,7 +101,10 @@ enum CaptionContextBuilder {
         }
 
         for raw in text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }) {
-            let token = String(raw).trimmingCharacters(in: punctuation)
+            var token = String(raw).trimmingCharacters(in: punctuation)
+            for possessive in ["'s", "\u{2019}s", "'", "\u{2019}"] {
+                if token.hasSuffix(possessive) { token = String(token.dropLast(possessive.count)); break }
+            }
             let firstScalar = token.unicodeScalars.first
             let isCapitalized = token.count > 1 && firstScalar.map { CharacterSet.uppercaseLetters.contains($0) } == true
             if isCapitalized {
