@@ -103,48 +103,48 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
             // scheduler or double-run the engine.
             await self.scheduler?.stop()
             self.scheduler = nil
-            guard gen == self.enableGeneration else { return }
+            guard gen == self.enableGeneration else { call.resolve(); return }
 
             // Resolve the device locale to its supported EQUIVALENT once, and thread
             // THAT through model install + engine + store so the installed model
             // matches the one used (en-CA → en-US, etc.).
             guard let resolved = await SpeechTranscriptionEngine.supportedEquivalent(of: Locale.current) else {
-                guard gen == self.enableGeneration else { return }
+                guard gen == self.enableGeneration else { call.resolve(); return }
                 self.notifyStatus("error", "This language is not supported")
                 call.reject("This language is not supported")
                 return
             }
-            guard gen == self.enableGeneration else { return }
+            guard gen == self.enableGeneration else { call.resolve(); return }
 
             do {
                 try await self.requestAuthorization()
             } catch {
-                guard gen == self.enableGeneration else { return }
+                guard gen == self.enableGeneration else { call.resolve(); return }
                 self.notifyStatus("error", "Speech recognition permission was denied")
                 call.reject("Speech recognition permission was denied")
                 return
             }
-            guard gen == self.enableGeneration else { return }
+            guard gen == self.enableGeneration else { call.resolve(); return }
 
             self.notifyStatus("downloading-model", nil)
             do {
                 try await SpeechTranscriptionEngine.prepareModel(locale: resolved)
             } catch {
-                guard gen == self.enableGeneration else { return }
+                guard gen == self.enableGeneration else { call.resolve(); return }
                 self.notifyStatus("error", "Could not download language support")
                 call.reject("Could not download language support")
                 return
             }
-            guard gen == self.enableGeneration else { return }
+            guard gen == self.enableGeneration else { call.resolve(); return }
 
             guard let context = self.buildContext(libraryItemId: libraryItemId) else {
-                guard gen == self.enableGeneration else { return }
+                guard gen == self.enableGeneration else { call.resolve(); return }
                 self.notifyStatus("error", "This book is not downloaded")
                 call.reject("This book is not downloaded")
                 return
             }
             // buildContext does not await; re-check before building/publishing.
-            guard gen == self.enableGeneration else { return }
+            guard gen == self.enableGeneration else { call.resolve(); return }
 
             self.notifyStatus("preparing", nil)
 
@@ -163,6 +163,7 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
             // rather than publishing/starting it.
             guard gen == self.enableGeneration else {
                 await scheduler.stop()
+                call.resolve()
                 return
             }
             self.scheduler = scheduler
@@ -172,6 +173,7 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
             guard gen == self.enableGeneration else {
                 await scheduler.stop()
                 if self.scheduler === scheduler { self.scheduler = nil }
+                call.resolve()
                 return
             }
             self.notifyStatus("ready", nil)
