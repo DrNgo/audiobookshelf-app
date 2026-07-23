@@ -16,6 +16,7 @@
 		2702DBEC19A2122D982F5E0F /* DownloadRetryPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70443258985312A213B77BBD /* DownloadRetryPolicyTests.swift */; };
 		27EB01ACFA895675CAE4C215 /* speech-sample.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 6EB6E748E7A8F29695AE39B3 /* speech-sample.m4a */; };
 		2BF8E1F016838E35D518CA78 /* WidgetSharedCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BFC64D760CA6013CB127B55 /* WidgetSharedCredentials.swift */; };
+		2D083A611274987219F1E788 /* AbsTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA38E2B67DCD5F02E325C55 /* AbsTranscriber.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		3173814B20D1975CEDC72F97 /* ABSApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF2E2D6EFA283B23454B5312 /* ABSApi.swift */; };
 		379C203A1F8B24B1753DCB21 /* ABSClientProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A83C012C3F0F103E00B8F19 /* ABSClientProvider.swift */; };
@@ -222,6 +223,7 @@
 		752F6C096D5E79AAD3257CED /* DownloadURLBuilderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadURLBuilderTests.swift; path = util/download/DownloadURLBuilderTests.swift; sourceTree = "<group>"; };
 		7942AC307736B81CA790644C /* CaptionStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionStoreTests.swift; path = util/captions/CaptionStoreTests.swift; sourceTree = "<group>"; };
 		7AF9B17C84D44C3E392C7B62 /* CarPlayCarousel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CarPlayCarousel.swift; path = App/carplay/CarPlayCarousel.swift; sourceTree = "<group>"; };
+		7FA38E2B67DCD5F02E325C55 /* AbsTranscriber.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AbsTranscriber.swift; sourceTree = "<group>"; };
 		868880DBCE80687EA999BFCE /* DownloadThroughputTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadThroughputTests.swift; path = util/download/DownloadThroughputTests.swift; sourceTree = "<group>"; };
 		89498D073F228221C043E0FB /* PlaybackSessionMappingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PlaybackSessionMappingTests.swift; path = AudiobookshelfUnitTests/Shared/util/absapi/PlaybackSessionMappingTests.swift; sourceTree = "<group>"; };
 		8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Audiobookshelf.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -381,6 +383,7 @@
 				4D66B953282EE87C008272D4 /* AbsDownloader.swift */,
 				4D66B957282EEA14008272D4 /* AbsFileSystem.swift */,
 				4DF6C7162DB58ABF004059F1 /* AbsLogger.swift */,
+				7FA38E2B67DCD5F02E325C55 /* AbsTranscriber.swift */,
 			);
 			path = plugins;
 			sourceTree = "<group>";
@@ -950,6 +953,7 @@
 				EEDFECACC6FE52F9279FCBFA /* SegmentProducing.swift in Sources */,
 				428E321E4815FEB51E678986 /* CaptionScheduler.swift in Sources */,
 				60716EC3B645502D96278152 /* SpeechTranscriptionEngine.swift in Sources */,
+				2D083A611274987219F1E788 /* AbsTranscriber.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

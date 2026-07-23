@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Audiobookshelf uses on-device speech recognition to show captions while you listen. Your audio never leaves your device.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
