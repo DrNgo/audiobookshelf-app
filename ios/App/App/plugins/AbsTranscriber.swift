@@ -243,7 +243,7 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.global(qos: .utility).async {
             guard let directory = self.downloadDirectory(for: libraryItemId) else {
                 // Not a downloaded book (or gone) — nothing to store; not an error.
-                call.resolve(["termCount": 0])
+                DispatchQueue.main.async { call.resolve(["termCount": 0]) }
                 return
             }
             let terms = CaptionContextBuilder.build(fields: fields, bookBlurb: bookBlurb, seriesBlurbs: seriesBlurbs)
@@ -251,10 +251,10 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
                 try CaptionContextStore(directory: directory).save(terms)
             } catch {
                 AppLogger(category: "AbsTranscriber").error("Failed to write caption context: \(error)")
-                call.resolve(["termCount": 0])
+                DispatchQueue.main.async { call.resolve(["termCount": 0]) }
                 return
             }
-            call.resolve(["termCount": terms.count])
+            DispatchQueue.main.async { call.resolve(["termCount": terms.count]) }
         }
     }
 
