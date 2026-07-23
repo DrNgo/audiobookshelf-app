@@ -4,7 +4,7 @@
 // best-effort: offline or any fetch failure degrades to current-book context (or none)
 // and never throws to the user. Registered AFTER nativeHttp.js so $nativeHttp exists.
 import { Capacitor } from '@capacitor/core'
-import { AbsDownloader, AbsTranscriber } from '@/plugins/capacitor'
+import { AbsDownloader, AbsTranscriber, AbsLogger } from '@/plugins/capacitor'
 
 const MAX_SERIES_SIBLINGS = 12
 
@@ -84,7 +84,15 @@ export default function (context) {
         }
       }
 
-      await AbsTranscriber.buildContext({ libraryItemId: localItemId, fields, bookBlurb, seriesBlurbs })
+      const result = await AbsTranscriber.buildContext({ libraryItemId: localItemId, fields, bookBlurb, seriesBlurbs })
+      // Surface the extracted biasing vocabulary to the in-app Logs page so
+      // caption accuracy can be evaluated (title + the terms it will bias toward).
+      const terms = result?.terms || []
+      const title = md.title || localItemId
+      AbsLogger.info({
+        tag: 'CaptionContext',
+        message: `"${title}" → ${terms.length} biasing terms (${seriesBlurbs.length} series blurbs): ${terms.join(', ')}`
+      })
     } catch (e) {
       console.warn('[captionContext] build failed (non-fatal)', e)
     }
