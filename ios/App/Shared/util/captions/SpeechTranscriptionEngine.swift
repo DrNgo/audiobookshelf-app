@@ -16,6 +16,7 @@ import Foundation
 // exactly one task), so suppress the cross-module Sendable warning as Apple advises.
 @preconcurrency import AVFoundation
 import Speech
+import OSLog
 
 @available(iOS 26.0, *)
 actor SpeechTranscriptionEngine: SegmentProducing {
@@ -24,6 +25,12 @@ actor SpeechTranscriptionEngine: SegmentProducing {
         case unsupportedLocale
         case unreadableAudio
     }
+
+    // Instruments: wraps each transcription window so energy/CPU bursts (and the
+    // idle gaps between them) are visible in the os_signpost / Energy Log tracks.
+    private static let signposter = OSSignposter(
+        logHandle: OSLog(subsystem: "com.audiobookshelf.captions", category: .pointsOfInterest)
+    )
 
     private let locale: Locale
     /// Optional biasing vocabulary (character/place names from book+series
@@ -89,6 +96,13 @@ actor SpeechTranscriptionEngine: SegmentProducing {
     private func run(request: TranscriptionRequest,
                      fileURL: URL,
                      continuation: AsyncThrowingStream<CaptionSegment, Error>.Continuation) async throws {
+
+        let signpostID = Self.signposter.makeSignpostID()
+        let interval = Self.signposter.beginInterval(
+            "CaptionTranscribeWindow", id: signpostID,
+            "bookOffset=\(request.bookOffset, privacy: .public)s duration=\(request.duration, privacy: .public)s"
+        )
+        defer { Self.signposter.endInterval("CaptionTranscribeWindow", interval) }
 
         // Finalized results only — we run ahead of the playhead, so provisional
         // guesses would only cause visible rewriting for no benefit.
