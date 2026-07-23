@@ -21,7 +21,8 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "isSupported", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "enable", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateTime", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "disable", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "disable", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "buildContext", returnType: CAPPluginReturnPromise)
     ]
 
     // Isolated to the main actor: these three are read/written from Task closures
@@ -154,7 +155,9 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
 
             self.notifyStatus("preparing", nil)
 
-            let engine = SpeechTranscriptionEngine(locale: resolved)
+            // Load the biasing vocabulary built at download time (empty if none).
+            let contextTerms = CaptionContextStore(directory: context.directory).load()
+            let engine = SpeechTranscriptionEngine(locale: resolved, contextualStrings: contextTerms)
             let scheduler = CaptionScheduler(
                 tracks: context.tracks,
                 fileURLs: context.fileURLs,
@@ -213,6 +216,45 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
             await self.scheduler?.stop()
             self.scheduler = nil
             call.resolve()
+        }
+    }
+
+    // MARK: - Context (biasing vocabulary)
+
+    /// The download folder for a library item id (server or local id), or nil
+    /// if the item isn't a downloaded book.
+    private func downloadDirectory(for libraryItemId: String) -> URL? {
+        let item = Database.shared.getLocalLibraryItem(byServerLibraryItemId: libraryItemId)
+            ?? Database.shared.getLocalLibraryItem(localLibraryItemId: libraryItemId)
+        guard let item = item, item.isBook else { return nil }
+        return item.contentDirectory
+    }
+
+    @objc func buildContext(_ call: CAPPluginCall) {
+        guard let libraryItemId = call.getString("libraryItemId") else {
+            call.reject("libraryItemId is required")
+            return
+        }
+        let fields = call.getArray("fields", String.self) ?? []
+        let bookBlurb = call.getString("bookBlurb") ?? ""
+        let seriesBlurbs = call.getArray("seriesBlurbs", String.self) ?? []
+
+        // Off the main thread — NER over several blurbs is CPU work.
+        DispatchQueue.global(qos: .utility).async {
+            guard let directory = self.downloadDirectory(for: libraryItemId) else {
+                // Not a downloaded book (or gone) — nothing to store; not an error.
+                call.resolve(["termCount": 0])
+                return
+            }
+            let terms = CaptionContextBuilder.build(fields: fields, bookBlurb: bookBlurb, seriesBlurbs: seriesBlurbs)
+            do {
+                try CaptionContextStore(directory: directory).save(terms)
+            } catch {
+                AppLogger(category: "AbsTranscriber").error("Failed to write caption context: \(error)")
+                call.resolve(["termCount": 0])
+                return
+            }
+            call.resolve(["termCount": terms.count])
         }
     }
 
