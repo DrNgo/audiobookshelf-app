@@ -180,6 +180,9 @@ export default {
   },
   watch: {
     showFullscreen(val) {
+      // Captions replace the cover art; when minimized the mini-player would
+      // show cut-off caption text where the cover belongs, so turn them off.
+      if (!val) this.showCaptions = false
       this.updateScreenSize()
       this.$store.commit('setPlayerFullscreen', !!val)
       document.querySelector('body').style.backgroundColor = this.showFullscreen ? this.coverRgb : ''
