@@ -12,6 +12,10 @@
       <div class="top-6 right-4 absolute cursor-pointer">
         <span class="material-symbols text-3xl" :class="{ 'text-black text-opacity-75': coverBgIsLight && theme !== 'black' }" @click="showMoreMenuDialog = true">more_vert</span>
       </div>
+      <div v-if="captionsButtonVisible" class="top-6 right-28 absolute cursor-pointer" @click="toggleCaptions">
+        <span class="material-symbols text-3xl"
+              :class="[!captionsEnabled ? 'text-fg text-opacity-30' : showCaptions ? 'text-fg' : 'text-fg text-opacity-60', { 'text-black text-opacity-75': coverBgIsLight && theme !== 'black' }]">closed_caption</span>
+      </div>
       <p class="top-4 absolute left-0 right-0 mx-auto text-center uppercase tracking-widest text-opacity-75" :class="{ 'text-black text-opacity-75': coverBgIsLight && theme !== 'black' }" style="font-size: 10px">{{ isDirectPlayMethod ? $strings.LabelPlaybackDirect : isLocalPlayMethod ? $strings.LabelPlaybackLocal : $strings.LabelPlaybackTranscode }}</p>
     </div>
 
@@ -32,7 +36,8 @@
 
     <div class="cover-wrapper absolute z-30 pointer-events-auto" @click="clickContainer">
       <div class="w-full h-full flex justify-center">
-        <covers-book-cover v-if="coverUrl" ref="cover" :download-cover="coverUrl" :width="bookCoverWidth" :book-cover-aspect-ratio="bookCoverAspectRatio" raw @imageLoaded="coverImageLoaded" />
+        <player-caption-panel v-if="showCaptions" :current-time="currentTime" :is-playing="isPlaying" :playback-rate="currentPlaybackRate" :library-item-id="captionLibraryItemId" :width="bookCoverWidth" />
+        <covers-book-cover v-else-if="coverUrl" ref="cover" :download-cover="coverUrl" :width="bookCoverWidth" :book-cover-aspect-ratio="bookCoverAspectRatio" raw @imageLoaded="coverImageLoaded" />
       </div>
 
       <div v-if="syncStatus === $constants.SyncStatus.FAILED" class="absolute top-0 left-0 w-full h-full flex items-center justify-center z-30" @click.stop="showSyncsFailedDialog">
@@ -112,7 +117,7 @@
 
 <script>
 import { Capacitor } from '@capacitor/core'
-import { AbsAudioPlayer } from '@/plugins/capacitor'
+import { AbsAudioPlayer, AbsTranscriber } from '@/plugins/capacitor'
 import { Dialog } from '@capacitor/dialog'
 import { getAverageColorFromCoverUrl } from '@/utils/coverAverageColor'
 import WrappingMarquee from '@/assets/WrappingMarquee.js'
@@ -167,7 +172,10 @@ export default {
       coverRgb: 'rgb(55, 56, 56)',
       coverBgIsLight: false,
       titleMarquee: null,
-      isRefreshingUI: false
+      isRefreshingUI: false,
+      showCaptions: false,
+      // iOS 26 present. Constant for the life of the app, so it's checked once.
+      captionsPlatformSupported: false
     }
   },
   watch: {
@@ -181,6 +189,11 @@ export default {
     },
     title(val) {
       if (this.titleMarquee) this.titleMarquee.init(val)
+    },
+    playbackSession(newSession, oldSession) {
+      if (newSession?.libraryItemId !== oldSession?.libraryItemId) {
+        this.showCaptions = false
+      }
     }
   },
   computed: {
@@ -323,6 +336,19 @@ export default {
     isDirectPlayMethod() {
       return this.playMethod == this.$constants.PlayMethod.DIRECTPLAY
     },
+    // Visible whenever the platform supports captions and a book is loaded.
+    captionsButtonVisible() {
+      return this.captionsPlatformSupported && !!this.playbackSession
+    },
+    // Enabled only for a downloaded (local) book.
+    captionsEnabled() {
+      return this.isLocalPlayMethod
+    },
+    // Captions run against the downloaded item. localLibraryItem.id is the
+    // "local_…" id the native plugin resolves via getLocalLibraryItem.
+    captionLibraryItemId() {
+      return this.localLibraryItem?.id || this.playbackSession?.libraryItemId || null
+    },
     title() {
       const mediaItemTitle = this.playbackSession?.displayTitle || this.mediaMetadata?.title || 'Title'
       if (this.currentChapterTitle) {
@@ -410,6 +436,35 @@ export default {
     }
   },
   methods: {
+    toggleCaptions() {
+      // Per spec, the button is visible but disabled for a streaming (not
+      // downloaded) book — explain rather than silently do nothing.
+      if (!this.captionsEnabled) {
+        this.$toast.info(this.$strings.MessageCaptionsRequireDownload)
+        return
+      }
+      this.showCaptions = !this.showCaptions
+      // Disclose the ASR accuracy limitation once, on first enable, rather than
+      // letting the user discover it via a mangled character name.
+      if (this.showCaptions && !localStorage.getItem('captionsAccuracyNoticeShown')) {
+        localStorage.setItem('captionsAccuracyNoticeShown', '1')
+        this.$toast.info(this.$strings.MessageCaptionsAccuracyNotice, { timeout: 8000 })
+      }
+    },
+    async checkCaptionsPlatformSupported() {
+      if (this.$platform !== 'ios') {
+        this.captionsPlatformSupported = false
+        return
+      }
+      try {
+        // reason === 'os' means iOS < 26 — the only case that hides the button.
+        // 'permission' and 'locale' still show the button; the panel explains them.
+        const result = await AbsTranscriber.isSupported()
+        this.captionsPlatformSupported = result.reason !== 'os'
+      } catch (error) {
+        this.captionsPlatformSupported = false
+      }
+    },
     showSyncsFailedDialog() {
       Dialog.alert({
         title: this.$strings.HeaderProgressSyncFailed,
@@ -983,6 +1038,7 @@ export default {
     document.body.addEventListener('touchend', this.touchend)
     document.body.addEventListener('touchmove', this.touchmove)
     this.$nextTick(this.init)
+    this.checkCaptionsPlatformSupported()
   },
   beforeDestroy() {
     if (screen.orientation) {
