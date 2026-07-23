@@ -11,8 +11,10 @@
 		06D1489326E2CDDD265A20C6 /* PlaybackSessionMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89498D073F228221C043E0FB /* PlaybackSessionMappingTests.swift */; };
 		0BED977EDBC051AF4C62571D /* CarPlayRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB16CD446ED640428DD3E2C /* CarPlayRow.swift */; };
 		132B5E7E6F517FFEAB3D8580 /* CaptionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7942AC307736B81CA790644C /* CaptionStoreTests.swift */; };
+		1D1E3B0988EFF66E316FAB77 /* SpeechTranscriptionEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBA2A8211374C819CB11A1E3 /* SpeechTranscriptionEngineTests.swift */; };
 		1F98F6925ED264465870A7C0 /* NowPlayingInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AA294D8BBB3BA9E6A46B8D4 /* NowPlayingInfoTests.swift */; };
 		2702DBEC19A2122D982F5E0F /* DownloadRetryPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70443258985312A213B77BBD /* DownloadRetryPolicyTests.swift */; };
+		27EB01ACFA895675CAE4C215 /* speech-sample.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 6EB6E748E7A8F29695AE39B3 /* speech-sample.m4a */; };
 		2BF8E1F016838E35D518CA78 /* WidgetSharedCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BFC64D760CA6013CB127B55 /* WidgetSharedCredentials.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		3173814B20D1975CEDC72F97 /* ABSApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF2E2D6EFA283B23454B5312 /* ABSApi.swift */; };
@@ -53,6 +55,7 @@
 		5A87A55D5BFAD8F99928B7A8 /* AudiobookshelfWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51EEA93F06CDF784E79CF126 /* AudiobookshelfWidget.swift */; };
 		5ABB86F61530CF350A9943EE /* ABSApiClient in Frameworks */ = {isa = PBXBuildFile; productRef = 50591D8B6EB610D406BBB081 /* ABSApiClient */; };
 		5B8975CACED6CD65BC9C7501 /* StallEvaluatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 266D3A7065DF6B82BB1CEDEF /* StallEvaluatorTests.swift */; };
+		60716EC3B645502D96278152 /* SpeechTranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F96E66BAE3B9F89F642625BD /* SpeechTranscriptionEngine.swift */; };
 		61EB7D1078451FD5FEE1A4A4 /* ABSTokenRefreshCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C3C5821849C2AECE3143637 /* ABSTokenRefreshCoordinator.swift */; };
 		62E7EA6AC9FC0FEDBE876F0F /* DownloadThroughputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 868880DBCE80687EA999BFCE /* DownloadThroughputTests.swift */; };
 		65643F4DAA661FB0B247247E /* Pods_Audiobookshelf.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F9A7CCC479333E44DC314BE /* Pods_Audiobookshelf.framework */; };
@@ -212,6 +215,7 @@
 		6AA294D8BBB3BA9E6A46B8D4 /* NowPlayingInfoTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NowPlayingInfoTests.swift; path = AudiobookshelfUnitTests/Shared/util/NowPlayingInfoTests.swift; sourceTree = "<group>"; };
 		6B339A5EB233D5A889859B26 /* CaptionStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionStore.swift; path = captions/CaptionStore.swift; sourceTree = "<group>"; };
 		6CE94268991F6119E32551AC /* WidgetCommandReceiver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetCommandReceiver.swift; path = App/widget/WidgetCommandReceiver.swift; sourceTree = "<group>"; };
+		6EB6E748E7A8F29695AE39B3 /* speech-sample.m4a */ = {isa = PBXFileReference; includeInIndex = 1; name = "speech-sample.m4a"; path = "speech-sample.m4a"; sourceTree = "<group>"; };
 		6F2516262E68DA3000F40541 /* LogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogEntry.swift; sourceTree = "<group>"; };
 		6F8E0E9C70DFEF087FEC3BAD /* App.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = App.entitlements; path = App/App.entitlements; sourceTree = "<group>"; };
 		70443258985312A213B77BBD /* DownloadRetryPolicyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadRetryPolicyTests.swift; path = util/download/DownloadRetryPolicyTests.swift; sourceTree = "<group>"; };
@@ -228,6 +232,7 @@
 		A967611962149D188F2193C3 /* BrowseItem.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowseItem.swift; path = Shared/util/browse/BrowseItem.swift; sourceTree = "<group>"; };
 		AF93D69239CB82EA485F45CF /* WidgetSync.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetSync.swift; path = App/widget/WidgetSync.swift; sourceTree = "<group>"; };
 		BAA6D49A3C1B8E51AB5DAE3A /* CaptionSchedulerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionSchedulerTests.swift; path = util/captions/CaptionSchedulerTests.swift; sourceTree = "<group>"; };
+		BBA2A8211374C819CB11A1E3 /* SpeechTranscriptionEngineTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SpeechTranscriptionEngineTests.swift; path = util/captions/SpeechTranscriptionEngineTests.swift; sourceTree = "<group>"; };
 		BBE1050D9643F7625727F898 /* BrowsePlaybackStarter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowsePlaybackStarter.swift; path = Shared/util/browse/BrowsePlaybackStarter.swift; sourceTree = "<group>"; };
 		BCAF8EDB459AF9405F4FE9BA /* Pods-AudiobookshelfUnitTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-AudiobookshelfUnitTests.debug.xcconfig"; path = "Target Support Files/Pods-AudiobookshelfUnitTests/Pods-AudiobookshelfUnitTests.debug.xcconfig"; sourceTree = "<group>"; };
 		BE96D57E131924D520D57057 /* Pods-Audiobookshelf.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.debug.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.debug.xcconfig"; sourceTree = "<group>"; };
@@ -274,6 +279,7 @@
 		EACB38132BCCA1410060DA4A /* LegacyAudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LegacyAudioPlayerRateManager.swift; sourceTree = "<group>"; };
 		EACB38152BCCA1500060DA4A /* DefaultedAudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DefaultedAudioPlayerRateManager.swift; sourceTree = "<group>"; };
 		F15C738FE66AA97A69722BA5 /* WidgetPlaybackCommand.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetPlaybackCommand.swift; path = Shared/util/widget/WidgetPlaybackCommand.swift; sourceTree = "<group>"; };
+		F96E66BAE3B9F89F642625BD /* SpeechTranscriptionEngine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SpeechTranscriptionEngine.swift; path = captions/SpeechTranscriptionEngine.swift; sourceTree = "<group>"; };
 		FCD782D68ADBCDC7149506F9 /* AudiobookIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AudiobookIntents.swift; path = App/shortcuts/AudiobookIntents.swift; sourceTree = "<group>"; };
 		FD6CA748237B31A41EECD113 /* BrowseLibraryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrowseLibraryTests.swift; path = AudiobookshelfUnitTests/Shared/util/browse/BrowseLibraryTests.swift; sourceTree = "<group>"; };
 		FD78D3D5E2236AD1D96E6047 /* CaptionScheduler.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionScheduler.swift; path = captions/CaptionScheduler.swift; sourceTree = "<group>"; };
@@ -316,6 +322,7 @@
 				D4BB10D0F5F975887FA26BD9 /* CaptionTimelineTests.swift */,
 				7942AC307736B81CA790644C /* CaptionStoreTests.swift */,
 				BAA6D49A3C1B8E51AB5DAE3A /* CaptionSchedulerTests.swift */,
+				BBA2A8211374C819CB11A1E3 /* SpeechTranscriptionEngineTests.swift */,
 			);
 			name = captions;
 			sourceTree = "<group>";
@@ -511,6 +518,7 @@
 				6B339A5EB233D5A889859B26 /* CaptionStore.swift */,
 				D59E61F63A7D538B50395A93 /* SegmentProducing.swift */,
 				FD78D3D5E2236AD1D96E6047 /* CaptionScheduler.swift */,
+				F96E66BAE3B9F89F642625BD /* SpeechTranscriptionEngine.swift */,
 			);
 			name = captions;
 			sourceTree = "<group>";
@@ -545,6 +553,15 @@
 				1AA01DBF3E5BAC6E42FF7D0E /* DownloadThroughput.swift */,
 			);
 			name = download;
+			sourceTree = "<group>";
+		};
+		D29E80613371F1BF24974C1B /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				6EB6E748E7A8F29695AE39B3 /* speech-sample.m4a */,
+			);
+			name = Fixtures;
+			path = Fixtures;
 			sourceTree = "<group>";
 		};
 		E9D5506328AC1D3F00C746DD /* server */ = {
@@ -593,6 +610,7 @@
 			isa = PBXGroup;
 			children = (
 				E9E8814328DA5E5900D750C1 /* Shared */,
+				D29E80613371F1BF24974C1B /* Fixtures */,
 			);
 			path = AudiobookshelfUnitTests;
 			sourceTree = "<group>";
@@ -764,6 +782,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				27EB01ACFA895675CAE4C215 /* speech-sample.m4a in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -930,6 +949,7 @@
 				FF499CDB1F052D4465CF269E /* CaptionStore.swift in Sources */,
 				EEDFECACC6FE52F9279FCBFA /* SegmentProducing.swift in Sources */,
 				428E321E4815FEB51E678986 /* CaptionScheduler.swift in Sources */,
+				60716EC3B645502D96278152 /* SpeechTranscriptionEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -953,6 +973,7 @@
 				77EE04CD7E272F4F00B0B776 /* CaptionTimelineTests.swift in Sources */,
 				132B5E7E6F517FFEAB3D8580 /* CaptionStoreTests.swift in Sources */,
 				DD4CEE8FDFC698AFD14AAD74 /* CaptionSchedulerTests.swift in Sources */,
+				1D1E3B0988EFF66E316FAB77 /* SpeechTranscriptionEngineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
