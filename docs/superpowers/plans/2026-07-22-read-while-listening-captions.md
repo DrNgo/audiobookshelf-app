@@ -1321,38 +1321,54 @@ actor SpeechTranscriptionEngine: SegmentProducing {
 
         let (inputStream, inputContinuation) = AsyncStream<AnalyzerInput>.makeStream()
 
-        // Pump PCM out of the file region and into the analyzer.
-        let feeder = Task {
-            defer { inputContinuation.finish() }
+        // Consume results CONCURRENTLY with feeding + finalizing. `transcriber.results`
+        // does not complete until the analyzer is finalized, and finalization is issued
+        // below AFTER the input is finished — so draining `results` inline before that
+        // call would DEADLOCK. Mirror Apple's WWDC pattern: spin the results consumer up
+        // first, feed, finish input, then finalize (which ends the results sequence and
+        // lets this child task return). Finalize ordering is confirmed on device in Task 9.
+        //
+        // Finalized results only: filter on isFinal so provisional guesses (we didn't
+        // request volatile reporting) never reach the UI.
+        let resultsTask = Task { () throws in
+            for try await result in transcriber.results {
+                if Task.isCancelled { break }
+                guard result.isFinal else { continue }
+                if let segment = Self.segment(from: result, bookOffset: request.bookOffset) {
+                    continuation.yield(segment)
+                }
+            }
+        }
+
+        // `resultsTask` is unstructured, so it does not inherit this (outer stream) task's
+        // cancellation. Bridge it explicitly — the role the old feeder cancel played.
+        try await withTaskCancellationHandler {
+            // Verified: `start(inputSequence:)` returns promptly once autonomous background
+            // analysis begins (async throws -> Void), distinct from `analyzeSequence` which
+            // returns CMTime? only after consuming the whole sequence — so feeding AFTER
+            // this call is correct.
             do {
+                try await analyzer.start(inputSequence: inputStream)
                 try await self.feed(fileURL: fileURL,
                                     request: request,
                                     analyzerFormat: analyzerFormat,
                                     into: inputContinuation)
             } catch {
                 inputContinuation.finish()
+                resultsTask.cancel()
+                await analyzer.cancelAndFinishNow()
+                throw error
             }
+            inputContinuation.finish()
+            // Verified: SpeechAnalyzer.finalizeAndFinishThroughEndOfInput() async throws.
+            // Finalizing completes `transcriber.results`, which ends `resultsTask`.
+            try await analyzer.finalizeAndFinishThroughEndOfInput()
+            try await resultsTask.value
+        } onCancel: {
+            inputContinuation.finish()
+            resultsTask.cancel()
+            Task { await analyzer.cancelAndFinishNow() }
         }
-
-        // Verified: autonomous-mode feed. (The file-based conveniences
-        // `analyzeSequence(from: AVAudioFile)` and `init(inputAudioFile:…)`
-        // exist but read to EOF and can't be bounded to our window, so we feed
-        // a ranged AVAssetReader sequence instead.)
-        try await analyzer.start(inputSequence: inputStream)
-
-        // Finalized results only: filter on isFinal so provisional guesses (which
-        // we didn't even request volatile reporting for) never reach the UI.
-        for try await result in transcriber.results {
-            if Task.isCancelled { break }
-            guard result.isFinal else { continue }
-            if let segment = Self.segment(from: result, bookOffset: request.bookOffset) {
-                continuation.yield(segment)
-            }
-        }
-
-        feeder.cancel()
-        // Verified: SpeechAnalyzer.finalizeAndFinishThroughEndOfInput() async throws.
-        try await analyzer.finalizeAndFinishThroughEndOfInput()
     }
 
     /// Decode `request.duration` seconds starting at `request.offsetInTrack`,
@@ -1412,14 +1428,18 @@ actor SpeechTranscriptionEngine: SegmentProducing {
 
         // Converter is identity when readerFormat == analyzerFormat; correct
         // otherwise. Never memcpy across mismatched layouts.
+        let formatsDiffer = readerFormat != analyzerFormat
         let converter = AVAudioConverter(from: readerFormat, to: analyzerFormat)
+        // If a converter is REQUIRED but couldn't be created, fail loudly rather
+        // than silently feeding wrong-format audio into the analyzer.
+        if formatsDiffer, converter == nil { throw EngineError.unreadableAudio }
 
         while let sampleBuffer = output.copyNextSampleBuffer() {
             if Task.isCancelled { break }
             guard let readerBuffer = Self.pcmBuffer(from: sampleBuffer, format: readerFormat) else { continue }
 
             let outBuffer: AVAudioPCMBuffer
-            if let converter, readerFormat != analyzerFormat {
+            if formatsDiffer, let converter {
                 guard let converted = Self.convert(readerBuffer, using: converter, to: analyzerFormat) else { continue }
                 outBuffer = converted
             } else {
