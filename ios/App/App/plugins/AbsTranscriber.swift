@@ -247,6 +247,9 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             let terms = CaptionContextBuilder.build(fields: fields, bookBlurb: bookBlurb, seriesBlurbs: seriesBlurbs)
+            // Diagnostic: surface the extracted biasing vocabulary (names from the
+            // book + series blurbs) so caption accuracy work can be evaluated.
+            AppLogger(category: "AbsTranscriber").log("Built caption context for \(libraryItemId): \(terms.count) terms [\(terms.joined(separator: ", "))]")
             do {
                 try CaptionContextStore(directory: directory).save(terms)
             } catch {
