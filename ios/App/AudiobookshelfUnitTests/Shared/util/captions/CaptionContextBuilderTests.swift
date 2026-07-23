@@ -152,4 +152,29 @@ final class CaptionContextBuilderTests: XCTestCase {
         XCTAssertFalse(terms.contains { $0.contains(" ") && $0.contains("Luthadel") },
                        "Luthadel must not fuse with the next name: \(terms.description)")
     }
+
+    // Sentence-initial ordinary English words are dropped; invented names survive.
+    func testHeuristicDropsSentenceInitialDictionaryWords() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "Even the mighty fall. Harvest came early. Kithani watched from Aodar.",
+            seriesBlurbs: []
+        )
+        XCTAssertFalse(terms.contains("Even"), terms.description)
+        XCTAssertFalse(terms.contains("Harvest"), terms.description)
+        XCTAssertTrue(terms.contains("Kithani"), terms.description)
+        XCTAssertTrue(terms.contains("Aodar"), terms.description)
+    }
+
+    // Em-dash between words splits them instead of fusing (Riven—his → Riven).
+    func testHeuristicSplitsOnEmDash() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "The warrior Vess\u{2014}his blade drawn\u{2014}advanced on Kithani.",
+            seriesBlurbs: []
+        )
+        XCTAssertTrue(terms.contains("Vess"), terms.description)
+        XCTAssertTrue(terms.contains("Kithani"), terms.description)
+        XCTAssertFalse(terms.contains { $0.contains("\u{2014}") }, "no em-dash in terms: \(terms.description)")
+    }
 }

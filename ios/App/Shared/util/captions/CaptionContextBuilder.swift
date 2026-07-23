@@ -12,6 +12,7 @@
 
 import Foundation
 import NaturalLanguage
+import UIKit
 
 enum CaptionContextBuilder {
 
@@ -79,28 +80,49 @@ enum CaptionContextBuilder {
     ]
 
     /// Title-Case proper-noun phrases in `text` — catches the invented names NER
-    /// misses (fantasy/sci-fi blurbs capitalize them). Consecutive capitalized
-    /// tokens form one phrase; a leading article is stripped; a single-word phrase
-    /// that is a common/function word is dropped.
+    /// misses. Consecutive capitalized tokens form a phrase; a leading article is
+    /// stripped; a single-word phrase is dropped if it is a common/function word,
+    /// OR if it sits at a sentence start AND is a real English word (sentence
+    /// capitalization of an ordinary word, not a name — invented names aren't in
+    /// the dictionary, so they survive).
     private static func capitalizedPhrases(in text: String) -> [String] {
         var phrases: [String] = []
         var current: [String] = []
+        var runStartsSentence = false
+        var atSentenceStart = true
+        let checker = UITextChecker()
         let punctuation = CharacterSet(charactersIn: ".,;:!?\"'()[]{}—–-…\u{201C}\u{201D}\u{2018}\u{2019}«»")
+        let closers: Set<Character> = ["\"", "'", "\u{201D}", "\u{2019}", ")", "]", "}", "»"]
+
+        func isDictionaryWord(_ word: String) -> Bool {
+            let w = word.lowercased()
+            let ns = w as NSString
+            guard ns.length > 0 else { return false }
+            let r = checker.rangeOfMisspelledWord(in: w, range: NSRange(location: 0, length: ns.length),
+                                                  startingAt: 0, wrap: false, language: "en")
+            return r.location == NSNotFound
+        }
 
         func flush() {
             guard !current.isEmpty else { return }
             var words = current
+            let startedSentence = runStartsSentence
             current = []
-            if words.count > 1, ["the","a","an"].contains(words[0].lowercased()) {
+            runStartsSentence = false
+            if words.count > 1, ["the", "a", "an"].contains(words[0].lowercased()) {
                 words.removeFirst()
             }
             guard !words.isEmpty else { return }
-            if words.count == 1, commonWords.contains(words[0].lowercased()) { return }
+            if words.count == 1 {
+                let w = words[0]
+                if commonWords.contains(w.lowercased()) { return }
+                if startedSentence, isDictionaryWord(w) { return }
+            }
             let phrase = words.joined(separator: " ")
             if !phrases.contains(phrase) { phrases.append(phrase) }
         }
 
-        for raw in text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }) {
+        for raw in text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" || $0 == "\u{2014}" || $0 == "\u{2013}" }) {
             var token = String(raw).trimmingCharacters(in: punctuation)
             for possessive in ["'s", "\u{2019}s", "'", "\u{2019}"] {
                 if token.hasSuffix(possessive) { token = String(token.dropLast(possessive.count)); break }
@@ -108,18 +130,21 @@ enum CaptionContextBuilder {
             let firstScalar = token.unicodeScalars.first
             let isCapitalized = token.count > 1 && firstScalar.map { CharacterSet.uppercaseLetters.contains($0) } == true
             if isCapitalized {
+                if current.isEmpty { runStartsSentence = atSentenceStart }
                 current.append(token)
             } else {
                 flush()
             }
-            // Detect a clause/sentence boundary even when the punctuation is wrapped
-            // by a closing quote or paren (e.g. `Luthadel."` or `Empire.)`), so two
-            // adjacent names across the boundary don't fuse into one phrase.
             var boundary = raw
-            let closers: Set<Character> = ["\"", "'", "\u{201D}", "\u{2019}", ")", "]", "}", "»"]
             while let last = boundary.last, closers.contains(last) { boundary = boundary.dropLast() }
-            if let last = boundary.last, ".!?,;:".contains(last) {
+            if let last = boundary.last, ".!?".contains(last) {
                 flush()
+                atSentenceStart = true
+            } else if let last = boundary.last, ",;:".contains(last) {
+                flush()
+                atSentenceStart = false
+            } else {
+                atSentenceStart = false
             }
         }
         flush()
