@@ -10,7 +10,13 @@ import Foundation
 
 final class CaptionStore {
 
-    private static let schemaVersion = 1
+    // Bumped whenever the decode/stamping path changes so stale mis-stamped caches
+    // are discarded:
+    //   v2: PTS-anchored stamping (superseded).
+    //   v3: decode via AVAudioFile + framePosition — AVAssetReader.timeRange ignored
+    //       the seek on multi-file FLAC books and re-delivered the file start for every
+    //       window, so v1/v2 caches are full of duplicate/mis-placed segments.
+    private static let schemaVersion = 3
     private static let filename = "captions.json"
 
     private struct Payload: Codable {

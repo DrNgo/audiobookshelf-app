@@ -137,6 +137,9 @@ actor SpeechTranscriptionEngine: SegmentProducing {
             for try await result in transcriber.results {
                 if Task.isCancelled { break }
                 guard result.isFinal else { continue }
+                // `feed` seeks the file to `offsetInTrack` and feeds a zero-based
+                // sequence, so `.audioTimeRange` is relative to that offset and book
+                // time is `request.bookOffset + reportedTime`. See `segment(from:)`.
                 if let segment = Self.segment(from: result, bookOffset: request.bookOffset) {
                     continuation.yield(segment)
                 }
@@ -156,7 +159,7 @@ actor SpeechTranscriptionEngine: SegmentProducing {
             // sequence). So feeding AFTER this call is correct. (The file-based
             // conveniences `analyzeSequence(from: AVAudioFile)` and
             // `init(inputAudioFile:…)` exist but read to EOF and can't be bounded to our
-            // window, so we feed a ranged AVAssetReader sequence instead.)
+            // window, so we feed a ranged `AVAudioFile` read sequence instead.)
             do {
                 // Bias recognition toward the book's known names, if we have any.
                 if !self.contextualStrings.isEmpty {
@@ -207,98 +210,82 @@ actor SpeechTranscriptionEngine: SegmentProducing {
     /// Decode `request.duration` seconds starting at `request.offsetInTrack`,
     /// converting every buffer into the analyzer's exact format before feeding.
     ///
-    /// Offset math, and why it's robust: we build a FRESH analyzer per request and
-    /// feed it starting at `offsetInTrack`, and `AVAudioPCMBuffer`s carry no
-    /// timestamps. So the analyzer counts time from zero at the first fed frame,
-    /// making `.audioTimeRange` values relative to the START of this request's
-    /// audio. Book time is therefore `request.bookOffset + reportedTime` — see
-    /// `segment(from:bookOffset:)`. Because the sequence starts at zero we do NOT
-    /// set `AnalyzerInput.bufferStartTime`. **Task 9 must confirm this assumption
-    /// on device** — if the analyzer instead reports asset-timeline times, the
-    /// shift becomes `track.startOffset + reportedTime` and this is the one line
-    /// to change.
+    /// Uses `AVAudioFile` + `framePosition` rather than `AVAssetReader.timeRange`:
+    /// on these multi-file FLAC books `AVAssetReader` IGNORES the requested time range
+    /// and re-delivers the START of the file for every window (so every window
+    /// transcribed the opening and stamped it wherever the playhead was). `AVAudioFile`
+    /// seeks by sample position, which FLAC supports accurately.
+    ///
+    /// Offset math: we seek to `offsetInTrack` and feed a zero-based sequence (no
+    /// `AnalyzerInput.bufferStartTime`), so `.audioTimeRange` values are relative to
+    /// `offsetInTrack` and book time is `request.bookOffset + reportedTime` — see
+    /// `run`'s results loop and `segment(from:bookOffset:)`.
     private func feed(fileURL: URL,
                       request: TranscriptionRequest,
                       analyzerFormat: AVAudioFormat,
                       into continuation: AsyncStream<AnalyzerInput>.Continuation) async throws {
 
-        let asset = AVURLAsset(url: fileURL)
-        guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
+        let file: AVAudioFile
+        do {
+            file = try AVAudioFile(forReading: fileURL)
+        } catch {
             throw EngineError.unreadableAudio
         }
 
-        // AVAssetReader rather than AVAudioFile: AVAudioFile is unreliable on .m4b.
-        let reader = try AVAssetReader(asset: asset)
-        reader.timeRange = CMTimeRange(
-            start: CMTime(seconds: request.offsetInTrack, preferredTimescale: 600),
-            duration: CMTime(seconds: request.duration, preferredTimescale: 600)
-        )
+        // `read(into:)` decodes into the file's processing format (float32 PCM at the
+        // file's own sample rate / channel count); AVAudioConverter then bridges it to
+        // whatever the analyzer wants (sample rate, channel count, interleaving).
+        let fileFormat = file.processingFormat
+        let sampleRate = fileFormat.sampleRate
+        guard sampleRate > 0, file.length > 0 else { throw EngineError.unreadableAudio }
 
-        // Read as canonical deinterleaved float32 mono. This is the reader's
-        // OUTPUT format; AVAudioConverter then bridges it to whatever the
-        // analyzer wants (sample rate, interleaving, bit depth may all differ).
-        let readerSampleRate = analyzerFormat.sampleRate
-        let outputSettings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsNonInterleaved: true,
-            AVSampleRateKey: readerSampleRate,
-            AVNumberOfChannelsKey: 1
-        ]
-        guard let readerFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                               sampleRate: readerSampleRate,
-                                               channels: 1,
-                                               interleaved: false) else {
-            throw EngineError.unreadableAudio
-        }
+        let startFrame = Int64((request.offsetInTrack * sampleRate).rounded())
+        let endFrame = min(Int64(((request.offsetInTrack + request.duration) * sampleRate).rounded()), file.length)
+        guard startFrame >= 0, startFrame < endFrame, startFrame < file.length else { return }
+        file.framePosition = startFrame
 
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
-        output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else { throw EngineError.unreadableAudio }
-        reader.add(output)
-        guard reader.startReading() else { throw EngineError.unreadableAudio }
-
-        // Converter is only needed when the formats differ. When they do, it is
-        // REQUIRED — feeding the reader's buffer unconverted would hand the analyzer a
-        // wrong-format buffer, so a nil converter here is a hard failure rather than a
-        // silent fallthrough. When formats match we feed the reader buffer directly.
-        let formatsDiffer = readerFormat != analyzerFormat
-        let converter = AVAudioConverter(from: readerFormat, to: analyzerFormat)
+        // Converter only needed when the formats differ; when it is, it is REQUIRED
+        // (feeding the raw buffer would hand the analyzer a wrong-format buffer).
+        let formatsDiffer = fileFormat != analyzerFormat
+        let converter = AVAudioConverter(from: fileFormat, to: analyzerFormat)
         if formatsDiffer && converter == nil {
             throw EngineError.unreadableAudio
         }
 
-        while let sampleBuffer = output.copyNextSampleBuffer() {
+        let chunkFrames: AVAudioFrameCount = 16384
+        var framesRemaining = endFrame - startFrame
+        while framesRemaining > 0 {
             if Task.isCancelled { break }
-            guard let readerBuffer = Self.pcmBuffer(from: sampleBuffer, format: readerFormat) else { continue }
+            let toRead = AVAudioFrameCount(min(Int64(chunkFrames), framesRemaining))
+            guard let readBuffer = AVAudioPCMBuffer(pcmFormat: fileFormat, frameCapacity: toRead) else {
+                throw EngineError.unreadableAudio
+            }
+            do {
+                try file.read(into: readBuffer, frameCount: toRead)
+            } catch {
+                throw EngineError.unreadableAudio
+            }
+            guard readBuffer.frameLength > 0 else { break } // EOF
+            framesRemaining -= Int64(readBuffer.frameLength)
 
             let outBuffer: AVAudioPCMBuffer
             if formatsDiffer, let converter {
-                guard let converted = Self.convert(readerBuffer, using: converter, to: analyzerFormat) else { continue }
+                guard let converted = Self.convert(readBuffer, using: converter, to: analyzerFormat) else { continue }
                 outBuffer = converted
             } else {
-                outBuffer = readerBuffer
+                outBuffer = readBuffer
             }
-            // Row 8: fresh sequence from zero ⇒ no bufferStartTime.
+            // Fresh sequence from zero ⇒ no bufferStartTime.
             continuation.yield(AnalyzerInput(buffer: outBuffer))
         }
 
-        // Reader exhausted normally: flush the converter's internal tail.
-        // AVAudioConverter (especially sample-rate conversion) buffers primer/tail
-        // frames until it's told the input has ended, so without this final drain
-        // the last word(s) of each window get clipped at the request boundary.
-        // Only meaningful on the converter path — identical formats feed the
-        // reader buffer directly and buffer nothing. Skipped if we broke out via
-        // cancellation (tearing down, not finalizing this window).
+        // Flush the converter's internal primer/tail so the last word(s) of the window
+        // aren't clipped. Only the converter path buffers anything; skip on cancellation.
         if !Task.isCancelled, formatsDiffer, let converter {
             for tail in Self.drainTail(of: converter, to: analyzerFormat) {
                 continuation.yield(AnalyzerInput(buffer: tail))
             }
         }
-
-        if reader.status == .failed { throw reader.error ?? EngineError.unreadableAudio }
-        reader.cancelReading()
     }
 
     /// Drain frames AVAudioConverter buffered internally, by driving it with an
@@ -321,26 +308,6 @@ actor SpeechTranscriptionEngine: SegmentProducing {
             if status == .endOfStream || status == .error || output.frameLength == 0 { break }
         }
         return buffers
-    }
-
-    /// Copy a decoded CMSampleBuffer into an AVAudioPCMBuffer of `format` using
-    /// the audio buffer list — safe across channel/layout, unlike a raw memcpy.
-    private static func pcmBuffer(from sampleBuffer: CMSampleBuffer, format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
-        guard frameCount > 0,
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)) else {
-            return nil
-        }
-        buffer.frameLength = AVAudioFrameCount(frameCount)
-
-        let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(
-            sampleBuffer,
-            at: 0,
-            frameCount: Int32(frameCount),
-            into: buffer.mutableAudioBufferList
-        )
-        guard status == noErr else { return nil }
-        return buffer
     }
 
     /// Run `input` through `converter` into a buffer of `outFormat`.

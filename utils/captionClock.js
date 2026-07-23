@@ -31,28 +31,38 @@ export function estimateBookTime(anchor, now) {
 }
 
 /**
- * Binary-search `segments` (sorted by start) for the word covering `bookTime`.
+ * Find the word covering `bookTime` in `segments` (sorted by start).
  * Returns `{ segmentIndex, wordIndex }`, or null when nothing covers it.
+ *
+ * Rule: show the MOST-RECENTLY-STARTED line at or behind the playhead (greatest
+ * start <= bookTime). ASR over music/effects inflates some segments' `end` so an
+ * older line overruns into the current one; anchoring on start (not coverage)
+ * means such an overrunning older segment can never win once a newer line has
+ * begun. If the playhead has run more than `holdLimit` seconds past that line's
+ * end — a long pause or a seek into not-yet-transcribed audio — show nothing
+ * ("Catching up") rather than a stale line.
  */
-export function findActiveWord(segments, bookTime) {
+export function findActiveWord(segments, bookTime, holdLimit = 3) {
   if (!segments || !segments.length) return null
 
+  // Rightmost segment whose start <= bookTime (binary search on the sorted starts).
   let lo = 0
   let hi = segments.length - 1
-  let found = -1
+  let rightmost = -1
   while (lo <= hi) {
     const mid = (lo + hi) >> 1
-    const segment = segments[mid]
-    if (bookTime < segment.start) {
-      hi = mid - 1
-    } else if (bookTime > segment.end) {
+    if (segments[mid].start <= bookTime) {
+      rightmost = mid
       lo = mid + 1
     } else {
-      found = mid
-      break
+      hi = mid - 1
     }
   }
-  if (found === -1) return null
+  if (rightmost === -1) return null // before the first segment
+
+  const found = rightmost
+  // Past this line's end by more than the hold window → a real gap, not this line.
+  if (bookTime > segments[found].end + holdLimit) return null
 
   const words = segments[found].words || []
   for (let i = 0; i < words.length; i++) {
