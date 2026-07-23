@@ -15,6 +15,7 @@
 		1F98F6925ED264465870A7C0 /* NowPlayingInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AA294D8BBB3BA9E6A46B8D4 /* NowPlayingInfoTests.swift */; };
 		2702DBEC19A2122D982F5E0F /* DownloadRetryPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70443258985312A213B77BBD /* DownloadRetryPolicyTests.swift */; };
 		27EB01ACFA895675CAE4C215 /* speech-sample.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 6EB6E748E7A8F29695AE39B3 /* speech-sample.m4a */; };
+		28CF7F4BA03C43E10DD0D0A0 /* CaptionContextBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6C1DAB45012832D5149AA8D /* CaptionContextBuilderTests.swift */; };
 		2BF8E1F016838E35D518CA78 /* WidgetSharedCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BFC64D760CA6013CB127B55 /* WidgetSharedCredentials.swift */; };
 		2D083A611274987219F1E788 /* AbsTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA38E2B67DCD5F02E325C55 /* AbsTranscriber.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
@@ -124,6 +125,7 @@
 		EEDFECACC6FE52F9279FCBFA /* SegmentProducing.swift in Sources */ = {isa = PBXBuildFile; fileRef = D59E61F63A7D538B50395A93 /* SegmentProducing.swift */; };
 		F0259D05FFA5C35BD0B484A9 /* AudiobookIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD782D68ADBCDC7149506F9 /* AudiobookIntents.swift */; };
 		F14B2AA1273A8D87B6DB202F /* WidgetCommandReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CE94268991F6119E32551AC /* WidgetCommandReceiver.swift */; };
+		F6532139B55009B1C5FB0E71 /* CaptionContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9EAFE4FCCC52161E3B6DAFA /* CaptionContextBuilder.swift */; };
 		FC188261350D39C7A2198A90 /* BrowseCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1CD1040FC6379F058F2FAA /* BrowseCacheTests.swift */; };
 		FF499CDB1F052D4465CF269E /* CaptionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B339A5EB233D5A889859B26 /* CaptionStore.swift */; };
 /* End PBXBuildFile section */
@@ -239,6 +241,7 @@
 		BCAF8EDB459AF9405F4FE9BA /* Pods-AudiobookshelfUnitTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-AudiobookshelfUnitTests.debug.xcconfig"; path = "Target Support Files/Pods-AudiobookshelfUnitTests/Pods-AudiobookshelfUnitTests.debug.xcconfig"; sourceTree = "<group>"; };
 		BE96D57E131924D520D57057 /* Pods-Audiobookshelf.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.debug.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.debug.xcconfig"; sourceTree = "<group>"; };
 		BF8ED7D34FDC3E0EAB7A8B4F /* DownloadRetryPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadRetryPolicy.swift; path = download/DownloadRetryPolicy.swift; sourceTree = "<group>"; };
+		C6C1DAB45012832D5149AA8D /* CaptionContextBuilderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionContextBuilderTests.swift; path = util/captions/CaptionContextBuilderTests.swift; sourceTree = "<group>"; };
 		CD6D77497B12DCD4B351665D /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CarPlaySceneDelegate.swift; path = App/carplay/CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
 		D2374601CE9CB82EEFB2EA08 /* DownloadStateStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DownloadStateStore.swift; path = download/DownloadStateStore.swift; sourceTree = "<group>"; };
 		D2F7F575384A63F1C47DE984 /* Pods-Audiobookshelf.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Audiobookshelf.release.xcconfig"; path = "Target Support Files/Pods-Audiobookshelf/Pods-Audiobookshelf.release.xcconfig"; sourceTree = "<group>"; };
@@ -275,6 +278,7 @@
 		E9E8814928DA644F00D750C1 /* PlayerTimeUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerTimeUtils.swift; sourceTree = "<group>"; };
 		E9E8814C28DA6B9000D750C1 /* PlayerTimeUtilsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerTimeUtilsTests.swift; sourceTree = "<group>"; };
 		E9E985F728B02D9400957F23 /* PlayerProgress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerProgress.swift; sourceTree = "<group>"; };
+		E9EAFE4FCCC52161E3B6DAFA /* CaptionContextBuilder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CaptionContextBuilder.swift; path = captions/CaptionContextBuilder.swift; sourceTree = "<group>"; };
 		E9FA07E228C82848005520B0 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		EA3F61A9613B94160C7CE2A4 /* Pods-AudiobookshelfUnitTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-AudiobookshelfUnitTests.release.xcconfig"; path = "Target Support Files/Pods-AudiobookshelfUnitTests/Pods-AudiobookshelfUnitTests.release.xcconfig"; sourceTree = "<group>"; };
 		EACB38112BCCA1330060DA4A /* AudioPlayerRateManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioPlayerRateManager.swift; sourceTree = "<group>"; };
@@ -325,6 +329,7 @@
 				7942AC307736B81CA790644C /* CaptionStoreTests.swift */,
 				BAA6D49A3C1B8E51AB5DAE3A /* CaptionSchedulerTests.swift */,
 				BBA2A8211374C819CB11A1E3 /* SpeechTranscriptionEngineTests.swift */,
+				C6C1DAB45012832D5149AA8D /* CaptionContextBuilderTests.swift */,
 			);
 			name = captions;
 			sourceTree = "<group>";
@@ -522,6 +527,7 @@
 				D59E61F63A7D538B50395A93 /* SegmentProducing.swift */,
 				FD78D3D5E2236AD1D96E6047 /* CaptionScheduler.swift */,
 				F96E66BAE3B9F89F642625BD /* SpeechTranscriptionEngine.swift */,
+				E9EAFE4FCCC52161E3B6DAFA /* CaptionContextBuilder.swift */,
 			);
 			name = captions;
 			sourceTree = "<group>";
@@ -954,6 +960,7 @@
 				428E321E4815FEB51E678986 /* CaptionScheduler.swift in Sources */,
 				60716EC3B645502D96278152 /* SpeechTranscriptionEngine.swift in Sources */,
 				2D083A611274987219F1E788 /* AbsTranscriber.swift in Sources */,
+				F6532139B55009B1C5FB0E71 /* CaptionContextBuilder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -978,6 +985,7 @@
 				132B5E7E6F517FFEAB3D8580 /* CaptionStoreTests.swift in Sources */,
 				DD4CEE8FDFC698AFD14AAD74 /* CaptionSchedulerTests.swift in Sources */,
 				1D1E3B0988EFF66E316FAB77 /* SpeechTranscriptionEngineTests.swift in Sources */,
+				28CF7F4BA03C43E10DD0D0A0 /* CaptionContextBuilderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
