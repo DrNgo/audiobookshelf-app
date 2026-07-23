@@ -74,7 +74,18 @@ If `iPhone 17 Pro` is unavailable, pick an available iOS 26 sim from `xcrun simc
 
 ---
 
-### Task 1: CaptionContextBuilder — NER + vocabulary policy
+### Task 1: CaptionContextBuilder — NER + Title-Case heuristic + vocabulary policy
+
+> **Extraction augmentation (decided during implementation):** NER alone skips
+> invented fantasy/sci-fi names — the target vocabulary. The builder therefore
+> UNIONS NER with a Title-Case proper-noun heuristic (`capitalizedPhrases` +
+> `commonWords`): `names(in:)` = `nerNames(in:)` ∪ `capitalizedPhrases(in:)`,
+> deduped by `build`. Heuristic: consecutive capitalized tokens form a phrase,
+> leading article stripped, single common/function words dropped. The `build`
+> interface and dedupe/priority/cap policy are unchanged. See the augmentation
+> commit for the exact `capitalizedPhrases`/`commonWords` code and the three
+> added tests (`testHeuristicCatchesInventedNames`,
+> `testHeuristicDropsSentenceInitialCommonWords`, `testHeuristicStripsLeadingArticle`).
 
 **Files:**
 - Create: `ios/App/Shared/util/captions/CaptionContextBuilder.swift`

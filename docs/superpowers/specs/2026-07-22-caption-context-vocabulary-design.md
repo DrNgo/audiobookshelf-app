@@ -33,7 +33,17 @@ Settled during brainstorming; each rules out a different product.
 |---|---|---|
 | Vocabulary source | Current book **+ series siblings** | Current book only; structured fields only |
 | When gathered | **At download time**, stored beside the book | At enable-time best-effort; enable-time + cache |
-| Extraction | **Apple `NLTagger` NER** (person/place/org) + structured fields | Capitalization heuristic; raw blurb text |
+| Extraction | **Apple `NLTagger` NER + a Title-Case heuristic**, unioned, + structured fields | NER alone; heuristic alone; raw blurb text; Core ML fine-tuned NER |
+
+> **Extraction correction (during implementation):** `NLTagger` NER is trained on
+> real-world entities and reliably skips or misclassifies **invented** fantasy/
+> sci-fi proper nouns — the exact vocabulary this feature targets. Fine-tuning a
+> Core ML NER model is disproportionate (per-genre training data, model pipeline,
+> app size) for a biasing feature. The blurb itself is the candidate name list:
+> fantasy/sci-fi blurbs capitalize their invented names. So extraction **unions**
+> two on-device passes — NER (real names/places/orgs) **and** a Title-Case
+> proper-noun heuristic (consecutive capitalized tokens, leading article stripped,
+> single common/function words dropped) — catching both real and invented names.
 | Existing downloads | **New downloads only (v1)** — no backfill | One-time backfill; rebuild-on-enable |
 
 ## Verified constraints
