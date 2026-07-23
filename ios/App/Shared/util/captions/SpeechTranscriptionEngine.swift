@@ -26,9 +26,13 @@ actor SpeechTranscriptionEngine: SegmentProducing {
     }
 
     private let locale: Locale
+    /// Optional biasing vocabulary (character/place names from book+series
+    /// metadata). Empty ⇒ no bias, identical to the unbiased path.
+    private let contextualStrings: [String]
 
-    init(locale: Locale) {
+    init(locale: Locale, contextualStrings: [String] = []) {
         self.locale = locale
+        self.contextualStrings = contextualStrings
     }
 
     /// Resolve a device locale to the supported locale it's EQUIVALENT to, or nil
@@ -140,6 +144,12 @@ actor SpeechTranscriptionEngine: SegmentProducing {
             // `init(inputAudioFile:…)` exist but read to EOF and can't be bounded to our
             // window, so we feed a ranged AVAssetReader sequence instead.)
             do {
+                // Bias recognition toward the book's known names, if we have any.
+                if !self.contextualStrings.isEmpty {
+                    let context = AnalysisContext()
+                    context.contextualStrings[.general] = self.contextualStrings
+                    try await analyzer.setContext(context)
+                }
                 try await analyzer.start(inputSequence: inputStream)
 
                 // Pump PCM out of the file region into the analyzer, inline so a feed
