@@ -2371,12 +2371,23 @@ grep -n "isLocalPlayMethod\|localLibraryItem\b\|playbackSession\b\|currentPlayba
 
 - [ ] **Step 6: Build the web layer and sync**
 
+**Use `nuxt generate`, NOT `nuxt build`.** Capacitor's `webDir` is `dist/`, which is produced ONLY by `nuxt generate` (static export). `npm run build` = `nuxt build` produces `.nuxt/` (SSR) and does NOT refresh `dist/`, so `cap sync` would copy a STALE `dist/` and the caption code would never reach the device. The repo's `npm run sync` does the right thing:
+
 ```bash
 cd /Users/michaelngo/projects/audiobookshelf-app
-npm run build && npx cap sync ios 2>&1 | tail -20
+npm run generate && npx cap sync ios 2>&1 | tail -20
+# (equivalently: npm run sync)
 ```
 
-Expected: build completes with no errors, `cap sync` reports success.
+Expected: generate completes, `cap sync` reports success.
+
+**Verify the caption code actually landed in the deployed bundle** (a compile-only check is NOT sufficient — it won't catch a stale `dist/`):
+
+```bash
+grep -rl "captionsPlatformSupported\|AbsTranscriber" ios/App/App/public/ | head
+```
+
+Expected: at least one `ios/App/App/public/_nuxt/*.js` match. If empty, the sync copied stale assets — re-run `npm run generate` first.
 
 - [ ] **Step 7: Commit**
 
