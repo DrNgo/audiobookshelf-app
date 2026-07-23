@@ -126,7 +126,13 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
             }
             guard gen == self.enableGeneration else { call.resolve(); return }
 
-            self.notifyStatus("downloading-model", nil)
+            // Only surface "downloading language support" when a download will
+            // actually happen; prepareModel is a fast no-op when installed.
+            let alreadyInstalled = await SpeechTranscriptionEngine.isModelInstalled(locale: resolved)
+            guard gen == self.enableGeneration else { call.resolve(); return }
+            if !alreadyInstalled {
+                self.notifyStatus("downloading-model", nil)
+            }
             do {
                 try await SpeechTranscriptionEngine.prepareModel(locale: resolved)
             } catch {

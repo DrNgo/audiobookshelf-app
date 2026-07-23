@@ -73,6 +73,18 @@ final class CaptionStoreTests: XCTestCase {
         XCTAssertEqual(store.load(locale: "en-US"), [])
     }
 
+    // A cache written by an older/newer schema must be ignored, not mis-decoded.
+    func testLoadWithWrongSchemaVersionReturnsEmpty() throws {
+        let store = CaptionStore(directory: dir)
+        // A payload that is valid JSON with the right locale but a mismatched
+        // schema version — the current schemaVersion is 1, so 999 must invalidate.
+        let json = """
+        {"version": 999, "locale": "en-US", "segments": [{"start": 0, "end": 1, "text": "hi", "words": [{"start": 0, "end": 1, "text": "hi"}]}]}
+        """
+        try Data(json.utf8).write(to: dir.appendingPathComponent("captions.json"))
+        XCTAssertEqual(store.load(locale: "en-US"), [])
+    }
+
     func testEvictRemovesTheFile() throws {
         let store = CaptionStore(directory: dir)
         try store.append([seg(0, 1, "hello")], locale: "en-US")

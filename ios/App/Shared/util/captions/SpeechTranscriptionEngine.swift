@@ -11,7 +11,10 @@
 //
 
 import Foundation
-import AVFoundation
+// @preconcurrency: AVFAudio's AVAudioPCMBuffer is non-Sendable, and we capture
+// one in the @Sendable feed closure. The capture is safe (each buffer is used by
+// exactly one task), so suppress the cross-module Sendable warning as Apple advises.
+@preconcurrency import AVFoundation
 import Speech
 
 @available(iOS 26.0, *)
@@ -42,6 +45,15 @@ actor SpeechTranscriptionEngine: SegmentProducing {
 
     static func isAvailable(locale: Locale) async -> Bool {
         return await supportedEquivalent(of: locale) != nil
+    }
+
+    /// True when the on-device model for `locale` is already installed, so callers
+    /// can skip the "downloading language support" status when nothing will download.
+    /// Verified against the iOS 26.5 SDK: `static var installedLocales: [Locale] { get async }`
+    /// on SpeechTranscriber. Compared by BCP-47 identifier, matching `supportedEquivalent`.
+    static func isModelInstalled(locale: Locale) async -> Bool {
+        let wanted = locale.identifier(.bcp47)
+        return await SpeechTranscriber.installedLocales.contains { $0.identifier(.bcp47) == wanted }
     }
 
     /// Downloads the on-device language model if it isn't installed yet.

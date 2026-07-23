@@ -298,6 +298,7 @@
   "MessageBookshelfEmpty": "Bookshelf empty",
   "MessageCaptionsAccuracyNotice": "Captions are generated on your device from the audio. Names and unusual words may be transcribed incorrectly.",
   "MessageCaptionsRequireDownload": "Download this book to read along with captions.",
+  "MessageCatchingUpCaptions": "Catching up…",
   "MessageConfirmAppExit":"Did you want to exit the app?",
   "MessageConfirmDeleteEpisodeDownloadQueue": "Are you sure you want to clear episode download queue?",
   "MessageConfirmDeleteLocalEpisode": "Remove local episode \"{0}\" from your device? The file on the server will be unaffected.",

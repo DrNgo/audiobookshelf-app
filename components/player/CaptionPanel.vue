@@ -2,7 +2,7 @@
   <div class="caption-panel w-full h-full flex items-center justify-center px-4" :style="{ width: width + 'px' }">
     <p v-if="status === 'error'" class="text-center text-fg text-opacity-75 text-sm">{{ statusMessage }}</p>
     <p v-else-if="status === 'downloading-model'" class="text-center text-fg text-opacity-75 text-sm">{{ $strings.MessageDownloadingLanguageSupport }}</p>
-    <p v-else-if="!visibleWords.length" class="text-center text-fg text-opacity-50 text-sm">{{ $strings.MessagePreparingCaptions }}</p>
+    <p v-else-if="!visibleWords.length" class="text-center text-fg text-opacity-50 text-sm">{{ waitingMessage }}</p>
     <p v-else class="caption-text text-center text-fg leading-relaxed">
       <span v-for="(word, index) in visibleWords" :key="index" :class="word.isActive ? 'text-fg font-semibold' : 'text-fg text-opacity-60'">{{ word.text }}</span>
     </p>
@@ -32,6 +32,12 @@ export default {
     }
   },
   computed: {
+    // Initial load has no transcript yet ("Preparing…"); once we have segments
+    // but no word covers the current position (a seek/window gap), we're just
+    // "Catching up…" to the audio the listener jumped into.
+    waitingMessage() {
+      return this.segments.length > 0 ? this.$strings.MessageCatchingUpCaptions : this.$strings.MessagePreparingCaptions
+    },
     // Show the active segment's words, so the reader gets a sentence of context.
     visibleWords() {
       const active = findActiveWord(this.segments, this.estimatedTime)

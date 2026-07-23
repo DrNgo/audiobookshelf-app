@@ -17,6 +17,13 @@ actor CaptionScheduler {
     private let locale: String
     private let windowAhead: Double
     private let refillMargin: Double
+    /// Drop segments whose end is more than this many seconds behind the playhead.
+    /// Bounds memory on a long session, and self-heals a far-backward seek: because
+    /// `coveredUntil`/`nextRequest` only walk FORWARD from the playhead, a region
+    /// that stayed in the never-trimmed array read as "covered" and never re-emitted,
+    /// so a seek >30min back showed nothing (the panel prunes ±30min). Trimming
+    /// behind lets that region read as uncovered → re-requested → re-emitted.
+    private let trimBehind: Double = 1800
     private let onSegments: @Sendable ([CaptionSegment]) -> Void
     private let logger = AppLogger(category: "CaptionScheduler")
 
@@ -121,6 +128,9 @@ actor CaptionScheduler {
         }
     }
 
+    /// Test hook: number of segments currently retained in memory.
+    func segmentCountForTesting() -> Int { segments.count }
+
     /// Hysteresis matters here. The *trigger* is the refill margin, but once
     /// triggered we fill all the way to `windowAhead`. Without the `isFilling`
     /// latch, every one-second playhead advance would issue a one-second
@@ -191,6 +201,9 @@ actor CaptionScheduler {
         if !produced.isEmpty {
             segments.append(contentsOf: produced)
             segments.sort { $0.start < $1.start }
+            // Bound in-memory growth (and re-open far-behind regions for a backward
+            // seek). Safe: covered/nextRequest only look forward from the playhead.
+            segments.removeAll { $0.end < playhead - trimBehind }
             try? store.append(produced, locale: locale)
             onSegments(produced)
         }

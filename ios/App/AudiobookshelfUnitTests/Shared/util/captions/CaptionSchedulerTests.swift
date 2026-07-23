@@ -213,6 +213,36 @@ final class CaptionSchedulerTests: XCTestCase {
                              "resuming must top the window back up")
     }
 
+    // The in-memory segment list must not grow without bound: once the playhead
+    // moves well past `trimBehind` (30min), segments left far behind are dropped.
+    func testSegmentsFarBehindThePlayheadAreTrimmed() async {
+        let engine = FakeEngine()
+        // A single long track so the playhead can advance past trimBehind (1800s).
+        let longTracks = [CaptionTrack(index: 0, startOffset: 0, duration: 4000, localFileId: "f0")]
+        let scheduler = CaptionScheduler(tracks: longTracks,
+                                         fileURLs: ["f0": dir.appendingPathComponent("f0.m4b")],
+                                         store: CaptionStore(directory: dir),
+                                         engine: engine,
+                                         locale: "en-US",
+                                         windowAhead: 60,
+                                         refillMargin: 30,
+                                         onSegments: { _ in })
+        await scheduler.start(at: 0)
+        await scheduler.drainForTesting()
+
+        // Jump the playhead well past trimBehind. A new window is transcribed near
+        // 2000; the segment produced near 0 is now >1800s behind and must be evicted.
+        await scheduler.advance(to: 2000)
+        await scheduler.drainForTesting()
+
+        let retained = await scheduler.segmentCountForTesting()
+        let requestCount = await engine.recordedRequests().count
+        XCTAssertGreaterThanOrEqual(requestCount, 2,
+                                    "both the initial region and the post-jump region were transcribed")
+        XCTAssertEqual(retained, 1,
+                       "only the current window is retained; the segment >30min behind was trimmed")
+    }
+
     // An engine failure must not wedge the scheduler, crash playback, or
     // retry the same failing gap forever.
     func testEngineFailureIsSwallowedAndNotRetried() async {

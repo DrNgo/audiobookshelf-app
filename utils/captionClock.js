@@ -80,7 +80,7 @@ export function pruneSegments(segments, bookTime, radius) {
 /** Merge new segments into a sorted list, replacing any with the same start. */
 export function mergeSegments(existing, incoming) {
   const byStart = new Map()
-  for (const segment of existing || []) byStart.set(Math.round(segment.start * 1000), segment)
-  for (const segment of incoming || []) byStart.set(Math.round(segment.start * 1000), segment)
+  for (const segment of existing || []) byStart.set(Math.round((Number(segment.start) || 0) * 1000), segment)
+  for (const segment of incoming || []) byStart.set(Math.round((Number(segment.start) || 0) * 1000), segment)
   return Array.from(byStart.values()).sort((a, b) => a.start - b.start)
 }
