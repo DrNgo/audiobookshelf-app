@@ -49,13 +49,20 @@ export default function (context) {
       }
       const md = item?.media?.metadata || localLibraryItem?.media?.metadata || {}
 
+      // Biasing terms: title/subtitle/series are real content nouns worth biasing toward.
       const fields = []
       if (md.title) fields.push(md.title)
       if (md.subtitle) fields.push(md.subtitle)
-      ;(md.authors || []).forEach((a) => a?.name && fields.push(a.name))
-      if (md.authorName) fields.push(md.authorName)
-      ;(md.narrators || []).forEach((n) => n && fields.push(n))
       ;(md.series || []).forEach((s) => s?.name && fields.push(s.name))
+
+      // Blacklist: author & narrator names are real people, not spoken characters —
+      // and for dramatized / GraphicAudio titles the narrators list is the entire
+      // voice cast. Pass them so the native builder subtracts them from the vocabulary
+      // (and never biases toward them) rather than adding them as terms.
+      const excludeNames = []
+      ;(md.authors || []).forEach((a) => a?.name && excludeNames.push(a.name))
+      if (md.authorName) excludeNames.push(md.authorName)
+      ;(md.narrators || []).forEach((n) => n && excludeNames.push(n))
 
       const bookBlurb = md.description || md.desc || ''
 
@@ -84,7 +91,7 @@ export default function (context) {
         }
       }
 
-      const result = await AbsTranscriber.buildContext({ libraryItemId: localItemId, fields, bookBlurb, seriesBlurbs })
+      const result = await AbsTranscriber.buildContext({ libraryItemId: localItemId, fields, bookBlurb, seriesBlurbs, excludeNames })
       // Surface the extracted biasing vocabulary to the in-app Logs page so
       // caption accuracy can be evaluated (title + the terms it will bias toward).
       const terms = result?.terms || []

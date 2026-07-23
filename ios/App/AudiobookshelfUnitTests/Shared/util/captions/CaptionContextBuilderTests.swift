@@ -177,4 +177,100 @@ final class CaptionContextBuilderTests: XCTestCase {
         XCTAssertTrue(terms.contains("Kithani"), terms.description)
         XCTAssertFalse(terms.contains { $0.contains("\u{2014}") }, "no em-dash in terms: \(terms.description)")
     }
+
+    // GraphicAudio / dramatized blurbs append a "Performed by <performer> as <role>"
+    // cast list. Those performer names are never spoken in the audio and must be
+    // dropped, while the synopsis before the credits marker is still mined.
+    func testStripsPerformedByCreditsBlock() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "Kithani watched from Aodar as the empire fell. "
+                + "Performed by Bradley Foster Smith as the King, "
+                + "Nanette Savard as the Queen, Terence Aselford as the Herald.",
+            seriesBlurbs: []
+        )
+        XCTAssertTrue(terms.contains("Kithani"), "synopsis name kept; got \(terms)")
+        XCTAssertTrue(terms.contains("Aodar"), "synopsis name kept; got \(terms)")
+        XCTAssertFalse(terms.contains { $0.contains("Bradley") }, "performer dropped; got \(terms)")
+        XCTAssertFalse(terms.contains { $0.contains("Savard") }, "performer dropped; got \(terms)")
+        XCTAssertFalse(terms.contains { $0.contains("Aselford") }, "performer dropped; got \(terms)")
+    }
+
+    // "Narrated by <name>" credit tails are truncated too (case-insensitive).
+    func testStripsNarratedByCreditsCaseInsensitively() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "Kithani watched from Aodar. NARRATED BY James Konicek.",
+            seriesBlurbs: []
+        )
+        XCTAssertTrue(terms.contains("Kithani"), terms.description)
+        XCTAssertFalse(terms.contains { $0.contains("Konicek") }, "narrator dropped; got \(terms)")
+    }
+
+    // The same truncation applies to series-sibling blurbs, which for dramatized
+    // series are the biggest source of performer-name flooding.
+    func testStripsCreditsInSeriesBlurbs() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "",
+            seriesBlurbs: ["Kithani returned to Aodar. Performed by Danny Gavigan as the Warden."]
+        )
+        XCTAssertTrue(terms.contains("Kithani"), terms.description)
+        XCTAssertFalse(terms.contains { $0.contains("Gavigan") }, "sibling performer dropped; got \(terms)")
+    }
+
+    // A blurb with no credits marker is mined in full — an ordinary "by" phrase
+    // ("guided by", "written by" is not in the marker set) must not truncate it.
+    func testBlurbWithoutCreditsMarkerUnaffected() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "Kithani was guided by Aodar through the ruins of Vess.",
+            seriesBlurbs: []
+        )
+        XCTAssertTrue(terms.contains("Kithani"), terms.description)
+        XCTAssertTrue(terms.contains("Aodar"), terms.description)
+        XCTAssertTrue(terms.contains("Vess"), terms.description)
+    }
+
+    // Author / narrator names are a blacklist: for dramatized titles the narrators
+    // list is the entire voice cast. They must never appear as terms, whether they
+    // came from the blurb prose or would have been added as fields.
+    func testExcludeNamesAreRemovedFromVocabulary() {
+        let terms = CaptionContextBuilder.build(
+            fields: ["Battle Mage Farmer"],   // series name stays
+            bookBlurb: "Kithani fought in Aodar. Rob McFadyen narrates the tale.",
+            seriesBlurbs: [],
+            excludeNames: ["Rob McFadyen", "Seth Ring"]
+        )
+        XCTAssertTrue(terms.contains("Kithani"), "character kept; got \(terms)")
+        XCTAssertTrue(terms.contains("Battle Mage Farmer"), "series field kept; got \(terms)")
+        XCTAssertFalse(terms.contains { $0.contains("McFadyen") }, "narrator dropped; got \(terms)")
+        XCTAssertFalse(terms.contains("Seth Ring"), "author dropped; got \(terms)")
+    }
+
+    // The exclude match is case-insensitive and whitespace-trimmed.
+    func testExcludeNamesMatchCaseInsensitively() {
+        let terms = CaptionContextBuilder.build(
+            fields: ["  JAMES LEWIS  "],
+            bookBlurb: "",
+            seriesBlurbs: [],
+            excludeNames: ["James Lewis"]
+        )
+        XCTAssertFalse(terms.contains { $0.lowercased().contains("james lewis") }, "got \(terms)")
+    }
+
+    // HTML tags and entities in a blurb are stripped before extraction, so tokens
+    // aren't corrupted (e.g. "Nova Terra.</p>" must not survive as a term).
+    func testStripsHtmlTagsBeforeExtraction() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "<p>Kithani journeyed to Aodar.</p> <p>Author of Nova Terra.</p>",
+            seriesBlurbs: []
+        )
+        XCTAssertTrue(terms.contains("Kithani"), terms.description)
+        XCTAssertTrue(terms.contains("Aodar"), terms.description)
+        XCTAssertTrue(terms.contains("Nova Terra"), "clean phrase kept; got \(terms)")
+        XCTAssertFalse(terms.contains { $0.contains("<") || $0.contains(">") },
+                       "no markup should survive in terms: \(terms.description)")
+    }
 }

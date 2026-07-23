@@ -238,6 +238,7 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
         let fields = call.getArray("fields", String.self) ?? []
         let bookBlurb = call.getString("bookBlurb") ?? ""
         let seriesBlurbs = call.getArray("seriesBlurbs", String.self) ?? []
+        let excludeNames = call.getArray("excludeNames", String.self) ?? []
 
         // Off the main thread — NER over several blurbs is CPU work.
         DispatchQueue.global(qos: .utility).async {
@@ -246,7 +247,7 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
                 DispatchQueue.main.async { call.resolve(["termCount": 0]) }
                 return
             }
-            let terms = CaptionContextBuilder.build(fields: fields, bookBlurb: bookBlurb, seriesBlurbs: seriesBlurbs)
+            let terms = CaptionContextBuilder.build(fields: fields, bookBlurb: bookBlurb, seriesBlurbs: seriesBlurbs, excludeNames: excludeNames)
             // Count only in the system log; the full term list is surfaced to the
             // app's own in-app Logs page (JS side, on the user's device) rather than
             // dumped to os_log.
