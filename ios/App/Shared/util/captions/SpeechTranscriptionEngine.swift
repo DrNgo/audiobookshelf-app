@@ -83,38 +83,70 @@ actor SpeechTranscriptionEngine: SegmentProducing {
 
         let (inputStream, inputContinuation) = AsyncStream<AnalyzerInput>.makeStream()
 
-        // Pump PCM out of the file region and into the analyzer.
-        let feeder = Task {
-            defer { inputContinuation.finish() }
+        // Consume results CONCURRENTLY with feeding + finalizing. `transcriber.results`
+        // does not complete until the analyzer is finalized, and finalization is issued
+        // below AFTER the input is finished — so draining `results` inline before that
+        // call would deadlock. This mirrors Apple's WWDC SpeechAnalyzer pattern: spin the
+        // results consumer up first, feed, finish input, then finalize (which ends the
+        // results sequence and lets this child task return). Finalize ordering is
+        // confirmed end-to-end on device in Task 9 (the sim has no en-US model).
+        //
+        // Finalized results only: filter on isFinal so provisional guesses (which we
+        // didn't even request volatile reporting for) never reach the UI.
+        let resultsTask = Task { () throws in
+            for try await result in transcriber.results {
+                if Task.isCancelled { break }
+                guard result.isFinal else { continue }
+                if let segment = Self.segment(from: result, bookOffset: request.bookOffset) {
+                    continuation.yield(segment)
+                }
+            }
+        }
+
+        // `resultsTask` is unstructured and so does NOT inherit cancellation from this
+        // (the outer stream's) task. The outer AsyncThrowingStream cancels this work via
+        // `onTermination` → the run task's cancellation, so bridge that to `resultsTask`
+        // (and the analyzer) with an explicit cancellation handler — the same role the
+        // old `feeder.cancel()` played. `feed` runs inline in this task, so its own
+        // `Task.isCancelled` checks already respond to the outer cancellation.
+        try await withTaskCancellationHandler {
+            // Verified: `start(inputSequence:)` returns promptly once autonomous
+            // background analysis begins (it is `async throws -> Void`, distinct from
+            // `analyzeSequence` which returns `CMTime?` only after consuming the whole
+            // sequence). So feeding AFTER this call is correct. (The file-based
+            // conveniences `analyzeSequence(from: AVAudioFile)` and
+            // `init(inputAudioFile:…)` exist but read to EOF and can't be bounded to our
+            // window, so we feed a ranged AVAssetReader sequence instead.)
             do {
+                try await analyzer.start(inputSequence: inputStream)
+
+                // Pump PCM out of the file region into the analyzer, inline so a feed
+                // failure surfaces here (feed keeps its own internal cancellation checks).
                 try await self.feed(fileURL: fileURL,
                                     request: request,
                                     analyzerFormat: analyzerFormat,
                                     into: inputContinuation)
             } catch {
                 inputContinuation.finish()
+                resultsTask.cancel()
+                await analyzer.cancelAndFinishNow()
+                throw error
             }
+
+            // Input exhausted: end the sequence, then finalize. Finalizing completes
+            // `transcriber.results`, which ends `resultsTask`.
+            inputContinuation.finish()
+            // Verified: SpeechAnalyzer.finalizeAndFinishThroughEndOfInput() async throws.
+            try await analyzer.finalizeAndFinishThroughEndOfInput()
+            try await resultsTask.value
+        } onCancel: {
+            // Outer task cancelled: stop the input, tear down the results consumer, and
+            // abandon analysis. `onCancel` runs synchronously, so the async analyzer
+            // teardown is detached.
+            inputContinuation.finish()
+            resultsTask.cancel()
+            Task { await analyzer.cancelAndFinishNow() }
         }
-
-        // Verified: autonomous-mode feed. (The file-based conveniences
-        // `analyzeSequence(from: AVAudioFile)` and `init(inputAudioFile:…)`
-        // exist but read to EOF and can't be bounded to our window, so we feed
-        // a ranged AVAssetReader sequence instead.)
-        try await analyzer.start(inputSequence: inputStream)
-
-        // Finalized results only: filter on isFinal so provisional guesses (which
-        // we didn't even request volatile reporting for) never reach the UI.
-        for try await result in transcriber.results {
-            if Task.isCancelled { break }
-            guard result.isFinal else { continue }
-            if let segment = Self.segment(from: result, bookOffset: request.bookOffset) {
-                continuation.yield(segment)
-            }
-        }
-
-        feeder.cancel()
-        // Verified: SpeechAnalyzer.finalizeAndFinishThroughEndOfInput() async throws.
-        try await analyzer.finalizeAndFinishThroughEndOfInput()
     }
 
     /// Decode `request.duration` seconds starting at `request.offsetInTrack`,
@@ -172,16 +204,22 @@ actor SpeechTranscriptionEngine: SegmentProducing {
         reader.add(output)
         guard reader.startReading() else { throw EngineError.unreadableAudio }
 
-        // Converter is identity when readerFormat == analyzerFormat; correct
-        // otherwise. Never memcpy across mismatched layouts.
+        // Converter is only needed when the formats differ. When they do, it is
+        // REQUIRED — feeding the reader's buffer unconverted would hand the analyzer a
+        // wrong-format buffer, so a nil converter here is a hard failure rather than a
+        // silent fallthrough. When formats match we feed the reader buffer directly.
+        let formatsDiffer = readerFormat != analyzerFormat
         let converter = AVAudioConverter(from: readerFormat, to: analyzerFormat)
+        if formatsDiffer && converter == nil {
+            throw EngineError.unreadableAudio
+        }
 
         while let sampleBuffer = output.copyNextSampleBuffer() {
             if Task.isCancelled { break }
             guard let readerBuffer = Self.pcmBuffer(from: sampleBuffer, format: readerFormat) else { continue }
 
             let outBuffer: AVAudioPCMBuffer
-            if let converter, readerFormat != analyzerFormat {
+            if formatsDiffer, let converter {
                 guard let converted = Self.convert(readerBuffer, using: converter, to: analyzerFormat) else { continue }
                 outBuffer = converted
             } else {

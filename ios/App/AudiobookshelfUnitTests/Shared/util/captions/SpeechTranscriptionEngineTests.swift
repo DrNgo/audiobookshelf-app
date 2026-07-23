@@ -46,7 +46,7 @@ final class SpeechTranscriptionEngineTests: XCTestCase {
         XCTAssertFalse(segments.isEmpty, "expected at least one segment from 15s of speech")
         let first = try XCTUnwrap(segments.first)
         XCTAssertGreaterThanOrEqual(first.start, 1000, "times must be shifted by bookOffset")
-        XCTAssertLessThan(first.start, 1020, "times must not run past the requested duration")
+        XCTAssertLessThan(first.start, 1015, "times must not run past the requested duration")
         XCTAssertFalse(first.words.isEmpty, "audioTimeRange attribute produced no word timings")
         XCTAssertFalse(first.text.trimmingCharacters(in: .whitespaces).isEmpty)
     }
