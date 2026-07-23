@@ -80,11 +80,20 @@ export default {
     }
   },
   async mounted() {
+    this._destroyed = false
     this.reanchor()
     this.tick()
 
-    this.captionSegmentsListener = await AbsTranscriber.addListener('onCaptionSegments', this.onCaptionSegments)
-    this.captionStatusListener = await AbsTranscriber.addListener('onCaptionStatus', this.onCaptionStatus)
+    // addListener is async: if the component is destroyed during either await,
+    // beforeDestroy already ran (and saw undefined), so remove the listener we
+    // just obtained instead of leaking it onto a dead component.
+    const segmentsListener = await AbsTranscriber.addListener('onCaptionSegments', this.onCaptionSegments)
+    if (this._destroyed) return segmentsListener.remove()
+    this.captionSegmentsListener = segmentsListener
+
+    const statusListener = await AbsTranscriber.addListener('onCaptionStatus', this.onCaptionStatus)
+    if (this._destroyed) return statusListener.remove()
+    this.captionStatusListener = statusListener
 
     try {
       await AbsTranscriber.enable({ libraryItemId: this.libraryItemId, currentTime: this.currentTime })
@@ -94,6 +103,7 @@ export default {
     }
   },
   beforeDestroy() {
+    this._destroyed = true
     if (this.rafHandle) cancelAnimationFrame(this.rafHandle)
     this.captionSegmentsListener?.remove()
     this.captionStatusListener?.remove()

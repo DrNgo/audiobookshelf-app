@@ -79,6 +79,12 @@ public class AbsTranscriber: CAPPlugin, CAPBridgedPlugin {
         lastReportedTime = currentTime
 
         Task {
+            // Idempotent: tear down any scheduler from a prior enable before starting
+            // a new one, so a rapid re-enable / book-change can't leak a running
+            // scheduler or double-run the engine.
+            await self.scheduler?.stop()
+            self.scheduler = nil
+
             do {
                 try await self.requestAuthorization()
             } catch {

@@ -137,7 +137,16 @@ actor SpeechTranscriptionEngine: SegmentProducing {
             // `transcriber.results`, which ends `resultsTask`.
             inputContinuation.finish()
             // Verified: SpeechAnalyzer.finalizeAndFinishThroughEndOfInput() async throws.
-            try await analyzer.finalizeAndFinishThroughEndOfInput()
+            // A throw here exits the withTaskCancellationHandler body normally (not via
+            // task cancellation), so onCancel does NOT run — cancel/await the results
+            // task ourselves or it leaks, still awaiting transcriber.results.
+            do {
+                try await analyzer.finalizeAndFinishThroughEndOfInput()
+            } catch {
+                resultsTask.cancel()
+                await analyzer.cancelAndFinishNow()
+                throw error
+            }
             try await resultsTask.value
         } onCancel: {
             // Outer task cancelled: stop the input, tear down the results consumer, and
