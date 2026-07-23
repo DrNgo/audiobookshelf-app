@@ -112,8 +112,13 @@ enum CaptionContextBuilder {
             } else {
                 flush()
             }
-            if raw.hasSuffix(".") || raw.hasSuffix("!") || raw.hasSuffix("?") ||
-               raw.hasSuffix(",") || raw.hasSuffix(";") || raw.hasSuffix(":") {
+            // Detect a clause/sentence boundary even when the punctuation is wrapped
+            // by a closing quote or paren (e.g. `Luthadel."` or `Empire.)`), so two
+            // adjacent names across the boundary don't fuse into one phrase.
+            var boundary = raw
+            let closers: Set<Character> = ["\"", "'", "\u{201D}", "\u{2019}", ")", "]", "}", "»"]
+            while let last = boundary.last, closers.contains(last) { boundary = boundary.dropLast() }
+            if let last = boundary.last, ".!?,;:".contains(last) {
                 flush()
             }
         }

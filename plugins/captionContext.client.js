@@ -27,6 +27,7 @@ export default function (context) {
       // Only successful downloads carry a localLibraryItem; a failed download has just libraryItemId.
       const localLibraryItem = data?.localLibraryItem
       if (!localLibraryItem) return
+      if (localLibraryItem.mediaType !== 'book') return
 
       // downloadDirectory(for:) on the native side resolves either the local ("local_…") id
       // or the server id, but the local id is unambiguous — prefer it.
@@ -34,10 +35,16 @@ export default function (context) {
       const serverItemId = data?.libraryItemId || localLibraryItem.libraryItemId
       if (!localItemId) return
 
+      // A connected socket means the auth token is currently valid, so a server 401 →
+      // token-refresh-failure → forced `/connect` redirect (logout, inside $nativeHttp) is
+      // not reachable. Without a live connection we never touch the server: current-book
+      // context is built from the local download snapshot and series enrichment is skipped.
+      const socketConnected = !!context.store?.state?.socketConnected
+
       // Full metadata for the current book (description, series, authors, narrators).
-      // Fall back to the metadata already in the download payload if the fetch fails/offline.
+      // Fall back to the metadata already in the download payload when not live-connected.
       let item = null
-      if (serverItemId) {
+      if (serverItemId && socketConnected) {
         item = await $nativeHttp.get(`/api/items/${serverItemId}?expanded=1`).catch(() => null)
       }
       const md = item?.media?.metadata || localLibraryItem?.media?.metadata || {}
@@ -57,7 +64,7 @@ export default function (context) {
       const seriesBlurbs = []
       const libraryId = item?.libraryId || localLibraryItem?.libraryId
       const firstSeries = (md.series || [])[0]
-      if (serverItemId && libraryId && firstSeries?.id) {
+      if (socketConnected && serverItemId && libraryId && firstSeries?.id) {
         const filter = `series.${encodeFilterValue(firstSeries.id)}`
         const res = await $nativeHttp
           .get(`/api/libraries/${libraryId}/items?filter=${filter}&limit=${MAX_SERIES_SIBLINGS}&expanded=1`)

@@ -139,4 +139,17 @@ final class CaptionContextBuilderTests: XCTestCase {
         XCTAssertFalse(terms.contains { $0.contains("\u{201C}") || $0.contains("\u{201D}") },
                        "no smart quotes should survive in terms: \(terms.description)")
     }
+
+    // Names separated by a sentence boundary wrapped in a closing quote must not fuse.
+    func testHeuristicBreaksNamesAcrossQuotedSentenceBoundary() {
+        let terms = CaptionContextBuilder.build(
+            fields: [],
+            bookBlurb: "\u{201C}Luthadel.\u{201D} Kelsier returned to the crew.",
+            seriesBlurbs: []
+        )
+        XCTAssertTrue(terms.contains("Luthadel"), terms.description)
+        XCTAssertTrue(terms.contains("Kelsier"), terms.description)
+        XCTAssertFalse(terms.contains { $0.contains(" ") && $0.contains("Luthadel") },
+                       "Luthadel must not fuse with the next name: \(terms.description)")
+    }
 }
